@@ -55,13 +55,19 @@ class Gork(commands.Cog):
         if message.author == self.bot.user:
             return
 
-        # Check if bot is mentioned
-        if self.bot.user in message.mentions:
+        # Check if bot is mentioned or if it's a DM (and not from a bot)
+        is_dm = isinstance(message.channel, discord.DMChannel)
+        is_mentioned = self.bot.user in message.mentions
+
+        if is_mentioned or (is_dm and not message.author.bot):
+            # Determine context for system message
+            context_type = "DM" if is_dm else "Discord server"
+
             # Prepare the conversation context
             messages = [
                 {
                     "role": "system",
-                    "content": "You are Gork, a helpful AI assistant in a Discord server. You are friendly, knowledgeable, and concise in your responses. Keep responses under 2000 characters to fit Discord's message limit."
+                    "content": f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. Keep responses under 2000 characters to fit Discord's message limit."
                 }
             ]
 
@@ -76,6 +82,11 @@ class Gork(commands.Cog):
 
             # Add user message
             user_content = message.content.replace(f'<@{self.bot.user.id}>', '').strip()
+
+            # In DMs, if there's no content after removing mention, use the original message
+            if is_dm and not user_content:
+                user_content = message.content.strip()
+
             if replied_content:
                 user_content += replied_content
 
@@ -99,14 +110,20 @@ class Gork(commands.Cog):
                     await message.reply(ai_response)
 
     @app_commands.command(name="gork", description="Chat with Gork AI")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def gork_command(self, interaction: discord.Interaction, message: str):
         """Slash command to chat with Gork"""
         await interaction.response.defer()
 
+        # Determine context for system message
+        is_dm = interaction.guild is None
+        context_type = "DM" if is_dm else "Discord server"
+
         messages = [
             {
                 "role": "system",
-                "content": "You are Gork, a helpful AI assistant in a Discord server. You are friendly, knowledgeable, and concise in your responses. Keep responses under 2000 characters to fit Discord's message limit."
+                "content": f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. Keep responses under 2000 characters to fit Discord's message limit."
             },
             {
                 "role": "user",
@@ -127,8 +144,14 @@ class Gork(commands.Cog):
             await interaction.followup.send(ai_response)
 
     @app_commands.command(name="gork_status", description="Check Gork AI status")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def gork_status(self, interaction: discord.Interaction):
         """Check if Gork AI is properly configured"""
+        # Determine context for usage instructions
+        is_dm = interaction.guild is None
+        usage_text = "Send me a message in DM or mention me in a server, or use `/gork` command" if is_dm else "Mention me in a message or use `/gork` command"
+
         if self.openrouter_api_key:
             embed = discord.Embed(
                 title="Gork AI Status",
@@ -136,7 +159,7 @@ class Gork(commands.Cog):
                 color=discord.Color.green()
             )
             embed.add_field(name="Model", value=self.model, inline=False)
-            embed.add_field(name="Usage", value="Mention me in a message or use `/gork` command", inline=False)
+            embed.add_field(name="Usage", value=usage_text, inline=False)
         else:
             embed = discord.Embed(
                 title="Gork AI Status",
