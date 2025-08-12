@@ -12,7 +12,7 @@ class Gork(commands.Cog):
         load_dotenv("ai.env")
         self.openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
         self.openrouter_url = "https://openrouter.ai/api/v1/chat/completions"
-        self.model = "google/gemini-2.5-flash-lite"
+        self.model = "google/gemini-2.0-flash-001"
 
         if not self.openrouter_api_key:
             print("Warning: OPENROUTER_API_KEY not found in environment variables")
