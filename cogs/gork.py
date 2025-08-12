@@ -250,7 +250,7 @@ class Gork(commands.Cog):
             messages = [
                 {
                     "role": "system",
-                    "content": f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, and read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** neofetch\n\nKeep responses under 2000 characters to fit Discord's message limit."
+                    "content": f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, and read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nKeep responses under 2000 characters to fit Discord's message limit."
                 }
             ]
 
@@ -364,7 +364,7 @@ class Gork(commands.Cog):
         messages = [
             {
                 "role": "system",
-                "content": f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, and read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** neofetch\n\nKeep responses under 2000 characters to fit Discord's message limit."
+                "content": f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, and read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nKeep responses under 2000 characters to fit Discord's message limit."
             },
             {
                 "role": "user",
@@ -444,7 +444,7 @@ class Gork(commands.Cog):
         )
 
         # Group commands by category
-        system_info = ['neofetch', 'whoami', 'pwd', 'date', 'uptime', 'uname', 'lsb_release', 'hostnamectl']
+        system_info = ['fastfetch', 'whoami', 'pwd', 'date', 'uptime', 'uname', 'lsb_release', 'hostnamectl']
         hardware_info = ['lscpu', 'sensors', 'lsblk', 'lsusb', 'lspci', 'free', 'df']
         process_info = ['ps', 'top', 'systemctl_status']
         network_info = ['ip_addr', 'netstat', 'ss']
