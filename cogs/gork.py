@@ -8,6 +8,7 @@ import base64
 import asyncio
 import subprocess
 from dotenv import load_dotenv
+import urllib.parse
 
 class Gork(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -42,8 +43,14 @@ class Gork(commands.Cog):
             'ss': 'ss -tuln'
         }
 
+        # SearchAPI.io configuration
+        self.searchapi_key = os.getenv("SEARCHAPI_KEY")
+        self.searchapi_url = "https://www.searchapi.io/api/v1/search"
+
         if not self.openrouter_api_key:
             print("Warning: OPENROUTER_API_KEY not found in environment variables")
+        if not self.searchapi_key:
+            print("Warning: SEARCHAPI_KEY not found. Web search functionality will be disabled.")
 
     async def process_files(self, message):
         """Process files and images from a Discord message and return them in the format expected by the AI API"""
@@ -203,6 +210,61 @@ class Gork(commands.Cog):
         except Exception as e:
             return f"❌ Error executing command '{command_name}': {str(e)}"
 
+    async def web_search(self, query: str, num_results: int = 5) -> str:
+        """Perform a web search using SearchAPI.io and return formatted results"""
+        if not self.searchapi_key:
+            return "❌ Web Search is not configured. Please set SEARCHAPI_KEY environment variable."
+
+        try:
+            # Prepare search parameters for SearchAPI.io
+            params = {
+                'api_key': self.searchapi_key,
+                'q': query,
+                'engine': 'google',
+                'num': min(num_results, 10)  # Limit to 10 results max
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(self.searchapi_url, params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+
+                        # Check if we have organic results
+                        organic_results = data.get('organic_results', [])
+                        if not organic_results:
+                            return f"🔍 No search results found for: {query}"
+
+                        # Format search results
+                        results = []
+                        for i, item in enumerate(organic_results[:num_results], 1):
+                            title = item.get('title', 'No title')
+                            link = item.get('link', '')
+                            snippet = item.get('snippet', 'No description available')
+
+                            # Truncate snippet if too long
+                            if len(snippet) > 150:
+                                snippet = snippet[:150] + "..."
+
+                            results.append(f"**{i}. {title}**\n{snippet}\n🔗 {link}")
+
+                        # Get search information
+                        search_info = data.get('search_information', {})
+                        total_results = search_info.get('total_results', 'Unknown')
+                        search_time = search_info.get('time_taken_displayed', 'Unknown')
+
+                        formatted_results = f"🔍 **Web Search Results for:** {query}\n"
+                        formatted_results += f"📊 Found {total_results} results in {search_time}\n\n"
+                        formatted_results += "\n\n".join(results)
+
+                        return formatted_results
+
+                    else:
+                        error_text = await response.text()
+                        return f"❌ SearchAPI.io error (status {response.status}): {error_text}"
+
+        except Exception as e:
+            return f"❌ Error performing web search: {str(e)}"
+
     async def call_ai(self, messages, max_tokens=1000):
         """Make a call to OpenRouter API with the Llama model"""
         if not self.openrouter_api_key:
@@ -251,10 +313,19 @@ class Gork(commands.Cog):
 
             # Prepare the conversation context
             safe_commands_list = ', '.join(self.safe_commands.keys())
+            web_search_status = "enabled" if self.searchapi_key else "disabled"
+
+            system_content = f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, and read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nWhen you execute fastfetch, analyze and summarize the output in a user-friendly way, highlighting key system information like OS, CPU, memory, etc. Don't just show the raw output - provide a nice summary."
+
+            if web_search_status == "enabled":
+                system_content += f"\n\nYou can also perform web searches when users ask for information that requires current/real-time data or information you don't have. Use this format:\n\n**WEB_SEARCH:** search query\n\nFor example, if someone asks 'What's the weather in New York?' you can respond with:\n**WEB_SEARCH:** weather New York today\n\nOr if they ask about current events, news, stock prices, or recent information, use web search to find up-to-date information."
+
+            system_content += "\n\nKeep responses under 2000 characters to fit Discord's message limit."
+
             messages = [
                 {
                     "role": "system",
-                    "content": f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, and read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nWhen you execute fastfetch, analyze and summarize the output in a user-friendly way, highlighting key system information like OS, CPU, memory, etc. Don't just show the raw output - provide a nice summary.\n\nKeep responses under 2000 characters to fit Discord's message limit."
+                    "content": system_content
                 }
             ]
 
@@ -324,7 +395,7 @@ class Gork(commands.Cog):
                 # Get AI response
                 ai_response = await self.call_ai(messages)
 
-                # Check if the AI wants to execute a command
+                # Check if the AI wants to execute a command or perform a Google search
                 if "**EXECUTE_COMMAND:**" in ai_response:
                     # Extract command from response
                     lines = ai_response.split('\n')
@@ -362,6 +433,25 @@ class Gork(commands.Cog):
                             # Replace the command instruction with the output
                             ai_response = ai_response.replace(command_line, command_output)
 
+                elif "**WEB_SEARCH:**" in ai_response:
+                    # Extract search query from response
+                    lines = ai_response.split('\n')
+                    search_line = None
+                    for line in lines:
+                        if "**WEB_SEARCH:**" in line:
+                            search_line = line
+                            break
+
+                    if search_line:
+                        # Extract search query
+                        search_query = search_line.split("**WEB_SEARCH:**")[1].strip()
+
+                        # Perform web search
+                        search_results = await self.web_search(search_query)
+
+                        # Replace the search instruction with the results
+                        ai_response = ai_response.replace(search_line, search_results)
+
                 # Split response if it's too long for Discord
                 if len(ai_response) > 2000:
                     # Split into chunks of 2000 characters
@@ -383,10 +473,19 @@ class Gork(commands.Cog):
         context_type = "DM" if is_dm else "Discord server"
 
         safe_commands_list = ', '.join(self.safe_commands.keys())
+        web_search_status = "enabled" if self.searchapi_key else "disabled"
+
+        system_content = f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, and read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nWhen you execute fastfetch, analyze and summarize the output in a user-friendly way, highlighting key system information like OS, CPU, memory, etc. Don't just show the raw output - provide a nice summary."
+
+        if web_search_status == "enabled":
+            system_content += f"\n\nYou can also perform web searches when users ask for information that requires current/real-time data or information you don't have. Use this format:\n\n**WEB_SEARCH:** search query\n\nFor example, if someone asks 'What's the weather in New York?' you can respond with:\n**WEB_SEARCH:** weather New York today\n\nOr if they ask about current events, news, stock prices, or recent information, use web search to find up-to-date information."
+
+        system_content += "\n\nKeep responses under 2000 characters to fit Discord's message limit."
+
         messages = [
             {
                 "role": "system",
-                "content": f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, and read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nWhen you execute fastfetch, analyze and summarize the output in a user-friendly way, highlighting key system information like OS, CPU, memory, etc. Don't just show the raw output - provide a nice summary.\n\nKeep responses under 2000 characters to fit Discord's message limit."
+                "content": system_content
             },
             {
                 "role": "user",
@@ -396,7 +495,7 @@ class Gork(commands.Cog):
 
         ai_response = await self.call_ai(messages)
 
-        # Check if the AI wants to execute a command
+        # Check if the AI wants to execute a command or perform a Google search
         if "**EXECUTE_COMMAND:**" in ai_response:
             # Extract command from response
             lines = ai_response.split('\n')
@@ -434,6 +533,25 @@ class Gork(commands.Cog):
                     # Replace the command instruction with the output
                     ai_response = ai_response.replace(command_line, command_output)
 
+        elif "**WEB_SEARCH:**" in ai_response:
+            # Extract search query from response
+            lines = ai_response.split('\n')
+            search_line = None
+            for line in lines:
+                if "**WEB_SEARCH:**" in line:
+                    search_line = line
+                    break
+
+            if search_line:
+                # Extract search query
+                search_query = search_line.split("**WEB_SEARCH:**")[1].strip()
+
+                # Perform web search
+                search_results = await self.web_search(search_query)
+
+                # Replace the search instruction with the results
+                ai_response = ai_response.replace(search_line, search_results)
+
         # Split response if it's too long for Discord
         if len(ai_response) > 2000:
             # Split into chunks of 2000 characters
@@ -460,7 +578,12 @@ class Gork(commands.Cog):
                 color=discord.Color.green()
             )
             embed.add_field(name="Model", value=self.model, inline=False)
-            embed.add_field(name="Capabilities", value="✅ Text chat\n✅ Image analysis\n✅ File reading (.txt, .py, .js, .html, .css, .json, .md, etc.)\n✅ Binary file analysis (.bin)\n✅ Safe system command execution", inline=False)
+
+            # Check web search status
+            web_search_status = "✅ Web Search (SearchAPI.io)" if self.searchapi_key else "❌ Web Search (not configured)"
+
+            capabilities = f"✅ Text chat\n✅ Image analysis\n✅ File reading (.txt, .py, .js, .html, .css, .json, .md, etc.)\n✅ Binary file analysis (.bin)\n✅ Safe system command execution\n{web_search_status}"
+            embed.add_field(name="Capabilities", value=capabilities, inline=False)
             embed.add_field(name="Safe Commands", value=f"Available: {', '.join(list(self.safe_commands.keys())[:10])}{'...' if len(self.safe_commands) > 10 else ''}", inline=False)
             embed.add_field(name="Usage", value=usage_text, inline=False)
         else:
