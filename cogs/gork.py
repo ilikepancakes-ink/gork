@@ -5,6 +5,8 @@ from discord import app_commands
 import aiohttp
 import json
 import base64
+import asyncio
+import subprocess
 from dotenv import load_dotenv
 
 class Gork(commands.Cog):
@@ -14,6 +16,31 @@ class Gork(commands.Cog):
         self.openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
         self.openrouter_url = "https://openrouter.ai/api/v1/chat/completions"
         self.model = "google/gemini-2.5-flash"
+
+        # Whitelist of safe commands that can be executed
+        self.safe_commands = {
+            'neofetch': 'neofetch',
+            'whoami': 'whoami',
+            'pwd': 'pwd',
+            'date': 'date',
+            'uptime': 'uptime',
+            'uname': 'uname -a',
+            'df': 'df -h',
+            'free': 'free -h',
+            'lscpu': 'lscpu',
+            'lsb_release': 'lsb_release -a',
+            'hostnamectl': 'hostnamectl',
+            'systemctl_status': 'systemctl --no-pager status',
+            'ps': 'ps aux',
+            'top': 'top -b -n1',
+            'sensors': 'sensors',
+            'lsblk': 'lsblk',
+            'lsusb': 'lsusb',
+            'lspci': 'lspci',
+            'ip_addr': 'ip addr show',
+            'netstat': 'netstat -tuln',
+            'ss': 'ss -tuln'
+        }
 
         if not self.openrouter_api_key:
             print("Warning: OPENROUTER_API_KEY not found in environment variables")
@@ -27,6 +54,9 @@ class Gork(commands.Cog):
                           '.csv', '.sql', '.php', '.java', '.cpp', '.c', '.h', '.cs', '.rb', '.go',
                           '.rs', '.ts', '.jsx', '.tsx', '.vue', '.svelte', '.sh', '.bat', '.ps1',
                           '.dockerfile', '.gitignore', '.env', '.ini', '.cfg', '.conf', '.log'}
+
+        # Define supported binary file extensions for analysis
+        binary_extensions = {'.bin'}
 
         # Check for attachments
         for attachment in message.attachments:
@@ -73,6 +103,32 @@ class Gork(commands.Cog):
                                         "text": f"File: {attachment.filename} (binary file - cannot display content)"
                                     })
 
+                # Handle binary files (.bin)
+                elif any(attachment.filename.lower().endswith(ext) for ext in binary_extensions):
+                    # Download the binary file for analysis
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(attachment.url) as response:
+                            if response.status == 200:
+                                binary_data = await response.read()
+                                file_size = len(binary_data)
+
+                                # Provide basic file information and hex preview
+                                hex_preview = ""
+                                if file_size > 0:
+                                    # Show first 256 bytes as hex
+                                    preview_bytes = binary_data[:256]
+                                    hex_preview = " ".join(f"{b:02x}" for b in preview_bytes)
+                                    if file_size > 256:
+                                        hex_preview += " ... (truncated)"
+
+                                content_parts.append({
+                                    "type": "text",
+                                    "text": f"Binary File: {attachment.filename}\n"
+                                           f"Size: {file_size} bytes\n"
+                                           f"Hex Preview (first 256 bytes):\n```\n{hex_preview}\n```\n"
+                                           f"Note: This is a binary file. I can analyze its structure, size, and hex data."
+                                })
+
             except Exception as e:
                 print(f"Error processing attachment {attachment.filename}: {e}")
 
@@ -98,6 +154,50 @@ class Gork(commands.Cog):
                     print(f"Error processing embed image: {e}")
 
         return content_parts
+
+    async def execute_safe_command(self, command_name: str) -> str:
+        """Execute a safe command and return its output"""
+        if command_name not in self.safe_commands:
+            return f"❌ Command '{command_name}' is not in the safe commands list. Available commands: {', '.join(self.safe_commands.keys())}"
+
+        command = self.safe_commands[command_name]
+
+        try:
+            # Execute the command with a timeout
+            process = await asyncio.create_subprocess_shell(
+                command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+
+            # Wait for the command to complete with a 30-second timeout
+            try:
+                stdout, stderr = await asyncio.wait_for(process.communicate(), timeout=30.0)
+            except asyncio.TimeoutError:
+                process.kill()
+                return f"❌ Command '{command_name}' timed out after 30 seconds"
+
+            # Decode the output
+            output = stdout.decode('utf-8', errors='replace').strip()
+            error = stderr.decode('utf-8', errors='replace').strip()
+
+            if process.returncode != 0:
+                return f"❌ Command '{command_name}' failed with exit code {process.returncode}:\n```\n{error or 'No error message'}\n```"
+
+            if not output and error:
+                output = error
+
+            if not output:
+                return f"✅ Command '{command_name}' executed successfully but produced no output"
+
+            # Limit output length to prevent Discord message limits
+            if len(output) > 1800:
+                output = output[:1800] + "\n... (output truncated)"
+
+            return f"✅ Command '{command_name}' output:\n```\n{output}\n```"
+
+        except Exception as e:
+            return f"❌ Error executing command '{command_name}': {str(e)}"
 
     async def call_ai(self, messages, max_tokens=1000):
         """Make a call to OpenRouter API with the Llama model"""
@@ -146,10 +246,11 @@ class Gork(commands.Cog):
             context_type = "DM" if is_dm else "Discord server"
 
             # Prepare the conversation context
+            safe_commands_list = ', '.join(self.safe_commands.keys())
             messages = [
                 {
                     "role": "system",
-                    "content": f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, and read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types) that users send. Keep responses under 2000 characters to fit Discord's message limit."
+                    "content": f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, and read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** neofetch\n\nKeep responses under 2000 characters to fit Discord's message limit."
                 }
             ]
 
@@ -219,6 +320,26 @@ class Gork(commands.Cog):
                 # Get AI response
                 ai_response = await self.call_ai(messages)
 
+                # Check if the AI wants to execute a command
+                if "**EXECUTE_COMMAND:**" in ai_response:
+                    # Extract command from response
+                    lines = ai_response.split('\n')
+                    command_line = None
+                    for line in lines:
+                        if "**EXECUTE_COMMAND:**" in line:
+                            command_line = line
+                            break
+
+                    if command_line:
+                        # Extract command name
+                        command_name = command_line.split("**EXECUTE_COMMAND:**")[1].strip()
+
+                        # Execute the command
+                        command_output = await self.execute_safe_command(command_name)
+
+                        # Replace the command instruction with the output
+                        ai_response = ai_response.replace(command_line, command_output)
+
                 # Split response if it's too long for Discord
                 if len(ai_response) > 2000:
                     # Split into chunks of 2000 characters
@@ -239,10 +360,11 @@ class Gork(commands.Cog):
         is_dm = interaction.guild is None
         context_type = "DM" if is_dm else "Discord server"
 
+        safe_commands_list = ', '.join(self.safe_commands.keys())
         messages = [
             {
                 "role": "system",
-                "content": f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, and read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types) that users send. Keep responses under 2000 characters to fit Discord's message limit."
+                "content": f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, and read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** neofetch\n\nKeep responses under 2000 characters to fit Discord's message limit."
             },
             {
                 "role": "user",
@@ -251,6 +373,26 @@ class Gork(commands.Cog):
         ]
 
         ai_response = await self.call_ai(messages)
+
+        # Check if the AI wants to execute a command
+        if "**EXECUTE_COMMAND:**" in ai_response:
+            # Extract command from response
+            lines = ai_response.split('\n')
+            command_line = None
+            for line in lines:
+                if "**EXECUTE_COMMAND:**" in line:
+                    command_line = line
+                    break
+
+            if command_line:
+                # Extract command name
+                command_name = command_line.split("**EXECUTE_COMMAND:**")[1].strip()
+
+                # Execute the command
+                command_output = await self.execute_safe_command(command_name)
+
+                # Replace the command instruction with the output
+                ai_response = ai_response.replace(command_line, command_output)
 
         # Split response if it's too long for Discord
         if len(ai_response) > 2000:
@@ -278,7 +420,8 @@ class Gork(commands.Cog):
                 color=discord.Color.green()
             )
             embed.add_field(name="Model", value=self.model, inline=False)
-            embed.add_field(name="Capabilities", value="✅ Text chat\n✅ Image analysis\n✅ File reading (.txt, .py, .js, .html, .css, .json, .md, etc.)", inline=False)
+            embed.add_field(name="Capabilities", value="✅ Text chat\n✅ Image analysis\n✅ File reading (.txt, .py, .js, .html, .css, .json, .md, etc.)\n✅ Binary file analysis (.bin)\n✅ Safe system command execution", inline=False)
+            embed.add_field(name="Safe Commands", value=f"Available: {', '.join(list(self.safe_commands.keys())[:10])}{'...' if len(self.safe_commands) > 10 else ''}", inline=False)
             embed.add_field(name="Usage", value=usage_text, inline=False)
         else:
             embed = discord.Embed(
@@ -286,6 +429,36 @@ class Gork(commands.Cog):
                 description="❌ Gork AI is not configured (missing API key)",
                 color=discord.Color.red()
             )
+
+        await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="gork_commands", description="List all available safe commands for system information")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    async def gork_commands(self, interaction: discord.Interaction):
+        """List all available safe commands"""
+        embed = discord.Embed(
+            title="🔧 Gork Safe Commands",
+            description="These commands can be executed by Gork to gather system information:",
+            color=discord.Color.blue()
+        )
+
+        # Group commands by category
+        system_info = ['neofetch', 'whoami', 'pwd', 'date', 'uptime', 'uname', 'lsb_release', 'hostnamectl']
+        hardware_info = ['lscpu', 'sensors', 'lsblk', 'lsusb', 'lspci', 'free', 'df']
+        process_info = ['ps', 'top', 'systemctl_status']
+        network_info = ['ip_addr', 'netstat', 'ss']
+
+        embed.add_field(name="🖥️ System Info", value=', '.join(system_info), inline=False)
+        embed.add_field(name="⚙️ Hardware Info", value=', '.join(hardware_info), inline=False)
+        embed.add_field(name="📊 Process Info", value=', '.join(process_info), inline=False)
+        embed.add_field(name="🌐 Network Info", value=', '.join(network_info), inline=False)
+
+        embed.add_field(
+            name="💡 How to use",
+            value="Just ask Gork for system information! For example:\n• 'Show me system info'\n• 'What's the CPU usage?'\n• 'Display network connections'\n\nGork will automatically choose and execute the appropriate command.",
+            inline=False
+        )
 
         await interaction.response.send_message(embed=embed)
 
