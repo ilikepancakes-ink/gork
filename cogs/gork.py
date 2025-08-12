@@ -9,7 +9,6 @@ from dotenv import load_dotenv
 class Gork(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        # Load environment variables from ai.env in the same directory as bot.py
         load_dotenv("ai.env")
         self.openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
         self.openrouter_url = "https://openrouter.ai/api/v1/chat/completions"
