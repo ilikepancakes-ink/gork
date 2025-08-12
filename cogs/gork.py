@@ -4,6 +4,7 @@ from discord.ext import commands
 from discord import app_commands
 import aiohttp
 import json
+import base64
 from dotenv import load_dotenv
 
 class Gork(commands.Cog):
@@ -12,10 +13,59 @@ class Gork(commands.Cog):
         load_dotenv("ai.env")
         self.openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
         self.openrouter_url = "https://openrouter.ai/api/v1/chat/completions"
-        self.model = "google/gemini-2.0-flash-001"
+        self.model = "google/gemini-2.5-flash"
 
         if not self.openrouter_api_key:
             print("Warning: OPENROUTER_API_KEY not found in environment variables")
+
+    async def process_images(self, message):
+        """Process images from a Discord message and return them in the format expected by the AI API"""
+        image_contents = []
+
+        # Check for attachments
+        for attachment in message.attachments:
+            if attachment.content_type and attachment.content_type.startswith('image/'):
+                try:
+                    # Download the image
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(attachment.url) as response:
+                            if response.status == 200:
+                                image_data = await response.read()
+                                # Convert to base64
+                                base64_image = base64.b64encode(image_data).decode('utf-8')
+
+                                # Add to content array in the format expected by OpenAI-compatible APIs
+                                image_contents.append({
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:{attachment.content_type};base64,{base64_image}"
+                                    }
+                                })
+                except Exception as e:
+                    print(f"Error processing image {attachment.filename}: {e}")
+
+        # Check for embeds with images (like from other bots or links)
+        for embed in message.embeds:
+            if embed.image and embed.image.url:
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(embed.image.url) as response:
+                            if response.status == 200:
+                                content_type = response.headers.get('content-type', 'image/png')
+                                if content_type.startswith('image/'):
+                                    image_data = await response.read()
+                                    base64_image = base64.b64encode(image_data).decode('utf-8')
+
+                                    image_contents.append({
+                                        "type": "image_url",
+                                        "image_url": {
+                                            "url": f"data:{content_type};base64,{base64_image}"
+                                        }
+                                    })
+                except Exception as e:
+                    print(f"Error processing embed image: {e}")
+
+        return image_contents
 
     async def call_ai(self, messages, max_tokens=1000):
         """Make a call to OpenRouter API with the Llama model"""
@@ -26,7 +76,7 @@ class Gork(commands.Cog):
             "Authorization": f"Bearer {self.openrouter_api_key}",
             "Content-Type": "application/json",
             "HTTP-Referer": "https://discordbot.learnhelp.cc",
-            "X-Title": "Nerus Discord Bot"
+            "X-Title": "Gork"
         }
 
         payload = {
@@ -67,18 +117,22 @@ class Gork(commands.Cog):
             messages = [
                 {
                     "role": "system",
-                    "content": f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. Keep responses under 2000 characters to fit Discord's message limit."
+                    "content": f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images that users send. Keep responses under 2000 characters to fit Discord's message limit."
                 }
             ]
 
-            # If the message is a reply, get the replied-to message content
+            # If the message is a reply, get the replied-to message content and images
             replied_content = ""
+            replied_images = []
             if message.reference and message.reference.message_id:
                 try:
                     replied_message = await message.channel.fetch_message(message.reference.message_id)
                     replied_content = f"\n\nContext (message being replied to):\nFrom {replied_message.author.display_name}: {replied_message.content}"
+                    # Also get images from the replied message
+                    replied_images = await self.process_images(replied_message)
                 except:
                     replied_content = ""
+                    replied_images = []
 
             # Add user message
             user_content = message.content.replace(f'<@{self.bot.user.id}>', '').strip()
@@ -90,10 +144,43 @@ class Gork(commands.Cog):
             if replied_content:
                 user_content += replied_content
 
-            messages.append({
-                "role": "user",
-                "content": user_content
-            })
+            # Process images from the message
+            image_contents = await self.process_images(message)
+
+            # Combine current message images with replied message images
+            all_images = image_contents + replied_images
+
+            # Create the user message content
+            if all_images:
+                # If there are images, create a content array with text and images
+                content_parts = []
+
+                # Add text content if it exists
+                if user_content:
+                    content_parts.append({
+                        "type": "text",
+                        "text": user_content
+                    })
+                else:
+                    # If no text but there are images, add a default prompt
+                    content_parts.append({
+                        "type": "text",
+                        "text": "What do you see in this image?"
+                    })
+
+                # Add all image contents (from current message and replied message)
+                content_parts.extend(all_images)
+
+                messages.append({
+                    "role": "user",
+                    "content": content_parts
+                })
+            else:
+                # No images, just text content
+                messages.append({
+                    "role": "user",
+                    "content": user_content
+                })
 
             # Show typing indicator
             async with message.channel.typing():
@@ -109,7 +196,7 @@ class Gork(commands.Cog):
                 else:
                     await message.reply(ai_response)
 
-    @app_commands.command(name="gork", description="Chat with Gork AI")
+    @app_commands.command(name="gork", description="Chat with Gork AI (for images, mention me in a message with the image)")
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def gork_command(self, interaction: discord.Interaction, message: str):
@@ -150,7 +237,7 @@ class Gork(commands.Cog):
         """Check if Gork AI is properly configured"""
         # Determine context for usage instructions
         is_dm = interaction.guild is None
-        usage_text = "Send me a message in DM or mention me in a server, or use `/gork` command" if is_dm else "Mention me in a message or use `/gork` command"
+        usage_text = "Send me a message in DM (with optional images) or mention me in a server, or use `/gork` command" if is_dm else "Mention me in a message (with optional images) or use `/gork` command"
 
         if self.openrouter_api_key:
             embed = discord.Embed(
@@ -159,6 +246,7 @@ class Gork(commands.Cog):
                 color=discord.Color.green()
             )
             embed.add_field(name="Model", value=self.model, inline=False)
+            embed.add_field(name="Capabilities", value="✅ Text chat\n✅ Image analysis", inline=False)
             embed.add_field(name="Usage", value=usage_text, inline=False)
         else:
             embed = discord.Embed(
