@@ -21,7 +21,7 @@ bot = commands.Bot(command_prefix="/", intents=intents)
 
 # Load cog files dynamically
 async def load_cogs():
-    for filename in os.listdir("/home/server/neruaibot/cogs"):
+    for filename in os.listdir("cogs"):
         if filename.endswith(".py"):
             try:
                 await bot.load_extension(f"cogs.{filename[:-3]}")
