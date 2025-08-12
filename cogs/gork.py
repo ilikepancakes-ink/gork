@@ -18,14 +18,21 @@ class Gork(commands.Cog):
         if not self.openrouter_api_key:
             print("Warning: OPENROUTER_API_KEY not found in environment variables")
 
-    async def process_images(self, message):
-        """Process images from a Discord message and return them in the format expected by the AI API"""
-        image_contents = []
+    async def process_files(self, message):
+        """Process files and images from a Discord message and return them in the format expected by the AI API"""
+        content_parts = []
+
+        # Define supported text file extensions
+        text_extensions = {'.txt', '.py', '.js', '.html', '.css', '.json', '.xml', '.md', '.yml', '.yaml',
+                          '.csv', '.sql', '.php', '.java', '.cpp', '.c', '.h', '.cs', '.rb', '.go',
+                          '.rs', '.ts', '.jsx', '.tsx', '.vue', '.svelte', '.sh', '.bat', '.ps1',
+                          '.dockerfile', '.gitignore', '.env', '.ini', '.cfg', '.conf', '.log'}
 
         # Check for attachments
         for attachment in message.attachments:
-            if attachment.content_type and attachment.content_type.startswith('image/'):
-                try:
+            try:
+                # Handle images
+                if attachment.content_type and attachment.content_type.startswith('image/'):
                     # Download the image
                     async with aiohttp.ClientSession() as session:
                         async with session.get(attachment.url) as response:
@@ -35,14 +42,39 @@ class Gork(commands.Cog):
                                 base64_image = base64.b64encode(image_data).decode('utf-8')
 
                                 # Add to content array in the format expected by OpenAI-compatible APIs
-                                image_contents.append({
+                                content_parts.append({
                                     "type": "image_url",
                                     "image_url": {
                                         "url": f"data:{attachment.content_type};base64,{base64_image}"
                                     }
                                 })
-                except Exception as e:
-                    print(f"Error processing image {attachment.filename}: {e}")
+
+                # Handle text files
+                elif any(attachment.filename.lower().endswith(ext) for ext in text_extensions):
+                    # Download the text file
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(attachment.url) as response:
+                            if response.status == 200:
+                                # Try to decode as text
+                                try:
+                                    file_content = await response.text(encoding='utf-8')
+                                    # Limit file size to prevent overwhelming the AI
+                                    if len(file_content) > 10000:  # 10KB limit
+                                        file_content = file_content[:10000] + "\n... (file truncated due to size)"
+
+                                    content_parts.append({
+                                        "type": "text",
+                                        "text": f"File: {attachment.filename}\n```\n{file_content}\n```"
+                                    })
+                                except UnicodeDecodeError:
+                                    # If it can't be decoded as text, skip it
+                                    content_parts.append({
+                                        "type": "text",
+                                        "text": f"File: {attachment.filename} (binary file - cannot display content)"
+                                    })
+
+            except Exception as e:
+                print(f"Error processing attachment {attachment.filename}: {e}")
 
         # Check for embeds with images (like from other bots or links)
         for embed in message.embeds:
@@ -56,7 +88,7 @@ class Gork(commands.Cog):
                                     image_data = await response.read()
                                     base64_image = base64.b64encode(image_data).decode('utf-8')
 
-                                    image_contents.append({
+                                    content_parts.append({
                                         "type": "image_url",
                                         "image_url": {
                                             "url": f"data:{content_type};base64,{base64_image}"
@@ -65,7 +97,7 @@ class Gork(commands.Cog):
                 except Exception as e:
                     print(f"Error processing embed image: {e}")
 
-        return image_contents
+        return content_parts
 
     async def call_ai(self, messages, max_tokens=1000):
         """Make a call to OpenRouter API with the Llama model"""
@@ -117,22 +149,22 @@ class Gork(commands.Cog):
             messages = [
                 {
                     "role": "system",
-                    "content": f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images that users send. Keep responses under 2000 characters to fit Discord's message limit."
+                    "content": f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, and read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types) that users send. Keep responses under 2000 characters to fit Discord's message limit."
                 }
             ]
 
-            # If the message is a reply, get the replied-to message content and images
+            # If the message is a reply, get the replied-to message content and files
             replied_content = ""
-            replied_images = []
+            replied_files = []
             if message.reference and message.reference.message_id:
                 try:
                     replied_message = await message.channel.fetch_message(message.reference.message_id)
                     replied_content = f"\n\nContext (message being replied to):\nFrom {replied_message.author.display_name}: {replied_message.content}"
-                    # Also get images from the replied message
-                    replied_images = await self.process_images(replied_message)
+                    # Also get files from the replied message
+                    replied_files = await self.process_files(replied_message)
                 except:
                     replied_content = ""
-                    replied_images = []
+                    replied_files = []
 
             # Add user message
             user_content = message.content.replace(f'<@{self.bot.user.id}>', '').strip()
@@ -144,15 +176,15 @@ class Gork(commands.Cog):
             if replied_content:
                 user_content += replied_content
 
-            # Process images from the message
-            image_contents = await self.process_images(message)
+            # Process files and images from the message
+            file_contents = await self.process_files(message)
 
-            # Combine current message images with replied message images
-            all_images = image_contents + replied_images
+            # Combine current message files with replied message files
+            all_files = file_contents + replied_files
 
             # Create the user message content
-            if all_images:
-                # If there are images, create a content array with text and images
+            if all_files:
+                # If there are files/images, create a content array with text and files
                 content_parts = []
 
                 # Add text content if it exists
@@ -162,21 +194,21 @@ class Gork(commands.Cog):
                         "text": user_content
                     })
                 else:
-                    # If no text but there are images, add a default prompt
+                    # If no text but there are files, add a default prompt
                     content_parts.append({
                         "type": "text",
-                        "text": "What do you see in this image?"
+                        "text": "Please analyze the attached files/images."
                     })
 
-                # Add all image contents (from current message and replied message)
-                content_parts.extend(all_images)
+                # Add all file contents (from current message and replied message)
+                content_parts.extend(all_files)
 
                 messages.append({
                     "role": "user",
                     "content": content_parts
                 })
             else:
-                # No images, just text content
+                # No files/images, just text content
                 messages.append({
                     "role": "user",
                     "content": user_content
@@ -196,7 +228,7 @@ class Gork(commands.Cog):
                 else:
                     await message.reply(ai_response)
 
-    @app_commands.command(name="gork", description="Chat with Gork AI (for images, mention me in a message with the image)")
+    @app_commands.command(name="gork", description="Chat with Gork AI (for files/images, mention me in a message with attachments)")
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def gork_command(self, interaction: discord.Interaction, message: str):
@@ -210,7 +242,7 @@ class Gork(commands.Cog):
         messages = [
             {
                 "role": "system",
-                "content": f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. Keep responses under 2000 characters to fit Discord's message limit."
+                "content": f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, and read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types) that users send. Keep responses under 2000 characters to fit Discord's message limit."
             },
             {
                 "role": "user",
@@ -237,7 +269,7 @@ class Gork(commands.Cog):
         """Check if Gork AI is properly configured"""
         # Determine context for usage instructions
         is_dm = interaction.guild is None
-        usage_text = "Send me a message in DM (with optional images) or mention me in a server, or use `/gork` command" if is_dm else "Mention me in a message (with optional images) or use `/gork` command"
+        usage_text = "Send me a message in DM (with optional files/images) or mention me in a server, or use `/gork` command" if is_dm else "Mention me in a message (with optional files/images) or use `/gork` command"
 
         if self.openrouter_api_key:
             embed = discord.Embed(
@@ -246,7 +278,7 @@ class Gork(commands.Cog):
                 color=discord.Color.green()
             )
             embed.add_field(name="Model", value=self.model, inline=False)
-            embed.add_field(name="Capabilities", value="✅ Text chat\n✅ Image analysis", inline=False)
+            embed.add_field(name="Capabilities", value="✅ Text chat\n✅ Image analysis\n✅ File reading (.txt, .py, .js, .html, .css, .json, .md, etc.)", inline=False)
             embed.add_field(name="Usage", value=usage_text, inline=False)
         else:
             embed = discord.Embed(
