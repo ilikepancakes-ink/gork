@@ -120,14 +120,26 @@ class Update(commands.Cog):
             return False, f"Reload operation failed: {str(e)}"
 
     @app_commands.command(name="debug", description="Debug commands for bot maintenance")
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     @app_commands.describe(action="Action to perform: update")
     async def debug(self, interaction: discord.Interaction, action: str):
         """Debug command for bot maintenance"""
         
-        # Check if user has administrator permissions
-        if not interaction.user.guild_permissions.administrator:
-            await interaction.response.send_message("❌ You need administrator permissions to use debug commands.", ephemeral=True)
-            return
+        # Check if user has administrator permissions or if it's the bot owner in DMs
+        if interaction.guild:
+            # In a guild, check for administrator permissions
+            if not interaction.user.guild_permissions.administrator:
+                await interaction.response.send_message("❌ You need administrator permissions to use debug commands.", ephemeral=True)
+                return
+        else:
+            # In DMs, only allow bot owners (you can modify this logic as needed)
+            # For now, let's check if the user is in the bot's application owners
+            app_info = await self.bot.application_info()
+            if app_info.owner and interaction.user.id != app_info.owner.id:
+                # Also check if it's a team and user is a team member
+                if not (app_info.team and any(member.id == interaction.user.id for member in app_info.team.members)):
+                    await interaction.response.send_message("❌ This command can only be used by the bot owner in DMs.", ephemeral=True)
+                    return
         
         if action.lower() != "update":
             await interaction.response.send_message("❌ Invalid action. Use `update` to pull from git and reload cogs.", ephemeral=True)

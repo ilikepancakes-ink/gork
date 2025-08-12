@@ -66,12 +66,31 @@ class Gork(commands.Cog):
             ]
 
             # If the message is a reply, get the replied-to message content
+            # In DMs, bots can only access messages they receive directly or send themselves
             replied_content = ""
             if message.reference and message.reference.message_id:
                 try:
-                    replied_message = await message.channel.fetch_message(message.reference.message_id)
+                    # Check if we're in a DM/private channel
+                    is_dm = isinstance(message.channel, (discord.DMChannel, discord.PartialMessageable)) or \
+                           (hasattr(message.channel, 'type') and message.channel.type == discord.ChannelType.private)
+                    
+                    if is_dm:
+                        # In DMs, we can only safely access the referenced message if it's recent
+                        # and part of the conversation history we have access to
+                        replied_message = await message.channel.fetch_message(message.reference.message_id)
+                    else:
+                        # In guild channels, we can fetch any message we have permissions to see
+                        replied_message = await message.channel.fetch_message(message.reference.message_id)
+                    
                     replied_content = f"\n\nContext (message being replied to):\nFrom {replied_message.author.display_name}: {replied_message.content}"
-                except:
+                except discord.NotFound:
+                    # Message not found or not accessible
+                    replied_content = "\n\nContext: (Referenced message not accessible)"
+                except discord.Forbidden:
+                    # No permission to fetch the message
+                    replied_content = "\n\nContext: (Referenced message not accessible)"
+                except Exception:
+                    # Any other error - fail gracefully
                     replied_content = ""
 
             # Add user message
@@ -99,6 +118,7 @@ class Gork(commands.Cog):
                     await message.reply(ai_response)
 
     @app_commands.command(name="gork", description="Chat with Gork AI")
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def gork_command(self, interaction: discord.Interaction, message: str):
         """Slash command to chat with Gork"""
         await interaction.response.defer()
@@ -127,6 +147,7 @@ class Gork(commands.Cog):
             await interaction.followup.send(ai_response)
 
     @app_commands.command(name="gork_status", description="Check Gork AI status")
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def gork_status(self, interaction: discord.Interaction):
         """Check if Gork AI is properly configured"""
         if self.openrouter_api_key:
