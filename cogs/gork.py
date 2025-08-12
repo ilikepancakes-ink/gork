@@ -19,7 +19,7 @@ class Gork(commands.Cog):
 
         # Whitelist of safe commands that can be executed
         self.safe_commands = {
-            'fastfetch': 'fastfetch',
+            'fastfetch': 'fastfetch --stdout',
             'whoami': 'whoami',
             'pwd': 'pwd',
             'date': 'date',
@@ -190,7 +190,11 @@ class Gork(commands.Cog):
             if not output:
                 return f"✅ Command '{command_name}' executed successfully but produced no output"
 
-            # Limit output length to prevent Discord message limits
+            # For fastfetch, return raw output for AI to summarize
+            if command_name == 'fastfetch':
+                return output
+
+            # For other commands, limit output length to prevent Discord message limits
             if len(output) > 1800:
                 output = output[:1800] + "\n... (output truncated)"
 
@@ -250,7 +254,7 @@ class Gork(commands.Cog):
             messages = [
                 {
                     "role": "system",
-                    "content": f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, and read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nKeep responses under 2000 characters to fit Discord's message limit."
+                    "content": f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, and read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nWhen you execute fastfetch, analyze and summarize the output in a user-friendly way, highlighting key system information like OS, CPU, memory, etc. Don't just show the raw output - provide a nice summary.\n\nKeep responses under 2000 characters to fit Discord's message limit."
                 }
             ]
 
@@ -337,8 +341,26 @@ class Gork(commands.Cog):
                         # Execute the command
                         command_output = await self.execute_safe_command(command_name)
 
-                        # Replace the command instruction with the output
-                        ai_response = ai_response.replace(command_line, command_output)
+                        # If it's fastfetch, ask AI to summarize the output
+                        if command_name == 'fastfetch' and not command_output.startswith('❌'):
+                            # Create a new message to ask AI to summarize fastfetch output
+                            summary_messages = [
+                                {
+                                    "role": "system",
+                                    "content": "You are Gork, a helpful AI assistant. Analyze the following fastfetch output and provide a concise, user-friendly summary of the system information. Highlight key details like OS, CPU, memory, storage, etc. Format it nicely for Discord."
+                                },
+                                {
+                                    "role": "user",
+                                    "content": f"Please summarize this fastfetch output:\n\n{command_output}"
+                                }
+                            ]
+
+                            # Get AI summary
+                            summary_response = await self.call_ai(summary_messages, max_tokens=800)
+                            ai_response = ai_response.replace(command_line, summary_response)
+                        else:
+                            # Replace the command instruction with the output
+                            ai_response = ai_response.replace(command_line, command_output)
 
                 # Split response if it's too long for Discord
                 if len(ai_response) > 2000:
@@ -364,7 +386,7 @@ class Gork(commands.Cog):
         messages = [
             {
                 "role": "system",
-                "content": f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, and read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nKeep responses under 2000 characters to fit Discord's message limit."
+                "content": f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, and read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nWhen you execute fastfetch, analyze and summarize the output in a user-friendly way, highlighting key system information like OS, CPU, memory, etc. Don't just show the raw output - provide a nice summary.\n\nKeep responses under 2000 characters to fit Discord's message limit."
             },
             {
                 "role": "user",
@@ -391,8 +413,26 @@ class Gork(commands.Cog):
                 # Execute the command
                 command_output = await self.execute_safe_command(command_name)
 
-                # Replace the command instruction with the output
-                ai_response = ai_response.replace(command_line, command_output)
+                # If it's fastfetch, ask AI to summarize the output
+                if command_name == 'fastfetch' and not command_output.startswith('❌'):
+                    # Create a new message to ask AI to summarize fastfetch output
+                    summary_messages = [
+                        {
+                            "role": "system",
+                            "content": "You are Gork, a helpful AI assistant. Analyze the following fastfetch output and provide a concise, user-friendly summary of the system information. Highlight key details like OS, CPU, memory, storage, etc. Format it nicely for Discord."
+                        },
+                        {
+                            "role": "user",
+                            "content": f"Please summarize this fastfetch output:\n\n{command_output}"
+                        }
+                    ]
+
+                    # Get AI summary
+                    summary_response = await self.call_ai(summary_messages, max_tokens=800)
+                    ai_response = ai_response.replace(command_line, summary_response)
+                else:
+                    # Replace the command instruction with the output
+                    ai_response = ai_response.replace(command_line, command_output)
 
         # Split response if it's too long for Discord
         if len(ai_response) > 2000:
