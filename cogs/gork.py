@@ -12,7 +12,7 @@ class Gork(commands.Cog):
         load_dotenv("ai.env")
         self.openrouter_api_key = os.getenv("OPENROUTER_API_KEY")
         self.openrouter_url = "https://openrouter.ai/api/v1/chat/completions"
-        self.model = "meta-llama/llama-3.1-405b-instruct:free"
+        self.model = "meta-llama/llama-3.2-11b-vision-instruct:free"
 
         if not self.openrouter_api_key:
             print("Warning: OPENROUTER_API_KEY not found in environment variables")
