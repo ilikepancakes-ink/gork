@@ -19,7 +19,7 @@ class Gork(commands.Cog):
 
         # Whitelist of safe commands that can be executed
         self.safe_commands = {
-            'neofetch': 'neofetch',
+            'fastfetch': 'fastfetch',
             'whoami': 'whoami',
             'pwd': 'pwd',
             'date': 'date',
