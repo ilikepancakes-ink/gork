@@ -58,10 +58,16 @@ class Gork(commands.Cog):
         self.searchapi_key = os.getenv("SEARCHAPI_KEY")
         self.searchapi_url = "https://www.searchapi.io/api/v1/search"
 
+        # WeatherAPI configuration
+        self.weatherapi_key = os.getenv("WEATHERAPI_KEY")
+        self.weatherapi_url = "http://api.weatherapi.com/v1"
+
         if not self.openrouter_api_key:
             print("Warning: OPENROUTER_API_KEY not found in environment variables")
         if not self.searchapi_key:
             print("Warning: SEARCHAPI_KEY not found. Web search functionality will be disabled.")
+        if not self.weatherapi_key or self.weatherapi_key == "your_weatherapi_key_here":
+            print("Warning: WEATHERAPI_KEY not found or not configured. Weather functionality will be disabled.")
 
         # Initialize Whisper model for audio transcription
         try:
@@ -389,6 +395,69 @@ class Gork(commands.Cog):
         except Exception as e:
             return f"❌ Error performing web search: {str(e)}"
 
+    async def get_weather(self, location: str) -> str:
+        """Get weather information using WeatherAPI"""
+        if not self.weatherapi_key or self.weatherapi_key == "your_weatherapi_key_here":
+            return "❌ Weather functionality is not configured. Please set WEATHERAPI_KEY environment variable."
+
+        try:
+            # Use forecast endpoint for current + forecast data
+            url = f"{self.weatherapi_url}/forecast.json"
+            params = {
+                "key": self.weatherapi_key,
+                "q": location,
+                "days": 3,  # Get 3-day forecast
+                "aqi": "yes",  # Include air quality data
+                "alerts": "yes"  # Include weather alerts
+            }
+
+            async with aiohttp.ClientSession() as session:
+                async with session.get(url, params=params) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        return await self.format_weather_data(data)
+                    else:
+                        error_data = await response.json()
+                        error_msg = error_data.get('error', {}).get('message', 'Unknown error')
+                        return f"❌ WeatherAPI Error {response.status}: {error_msg}"
+
+        except Exception as e:
+            return f"❌ Error fetching weather data: {str(e)}"
+
+    async def format_weather_data(self, data: dict) -> str:
+        """Format weather data into a readable response"""
+        try:
+            current = data["current"]
+            location_info = data["location"]
+            forecast = data["forecast"]["forecastday"]
+
+            # Current weather
+            response = f"🌤️ **Weather for {location_info['name']}, {location_info['region']}, {location_info['country']}**\n\n"
+            response += f"**Current Conditions** ({location_info['localtime']})\n"
+            response += f"🌡️ **Temperature:** {current['temp_c']}°C ({current['temp_f']}°F)\n"
+            response += f"🌡️ **Feels like:** {current['feelslike_c']}°C ({current['feelslike_f']}°F)\n"
+            response += f"☁️ **Condition:** {current['condition']['text']}\n"
+            response += f"💨 **Wind:** {current['wind_kph']} km/h {current['wind_dir']}\n"
+            response += f"💧 **Humidity:** {current['humidity']}%\n"
+
+            # Today's forecast
+            if forecast:
+                today = forecast[0]["day"]
+                response += f"\n**Today's Forecast**\n"
+                response += f"🌡️ **High/Low:** {today['maxtemp_c']}°C / {today['mintemp_c']}°C\n"
+                response += f"🌧️ **Rain chance:** {today['daily_chance_of_rain']}%\n"
+
+            # Weather alerts
+            if "alerts" in data and data["alerts"]["alert"]:
+                response += f"\n⚠️ **Weather Alerts:**\n"
+                for alert in data["alerts"]["alert"][:1]:  # Limit to 1 alert for space
+                    response += f"• {alert['headline']}\n"
+
+            return response
+
+        except Exception as e:
+            return f"❌ Error formatting weather data: {str(e)}"
+
     async def visit_website(self, url: str) -> str:
         """Visit a website and extract its content"""
         try:
@@ -553,11 +622,15 @@ class Gork(commands.Cog):
             # Prepare the conversation context
             safe_commands_list = ', '.join(self.safe_commands.keys())
             web_search_status = "enabled" if self.searchapi_key else "disabled"
+            weather_status = "enabled" if self.weatherapi_key and self.weatherapi_key != "your_weatherapi_key_here" else "disabled"
 
             system_content = f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types), and listen to and transcribe audio/video files (.mp3, .wav, .mp4) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nWhen you execute fastfetch, analyze and summarize the output in a user-friendly way, highlighting key system information like OS, CPU, memory, etc. Don't just show the raw output - provide a nice summary."
 
+            if weather_status == "enabled":
+                system_content += f"\n\nYou can get current weather information for any location. When users ask about weather, use this format:\n\n**GET_WEATHER:** location\n\nFor example, if someone asks 'What's the weather in London?' you can respond with:\n**GET_WEATHER:** London\n\nThis will provide current weather conditions, temperature, humidity, wind, and a 3-day forecast. You can use city names, coordinates, or specific locations."
+
             if web_search_status == "enabled":
-                system_content += f"\n\nYou can also perform web searches when users ask for information that requires current/real-time data or information you don't have. Use this format:\n\n**WEB_SEARCH:** search query\n\nFor example, if someone asks 'What's the weather in New York?' you can respond with:\n**WEB_SEARCH:** weather New York today\n\nOr if they ask about current events, news, stock prices, or recent information, use web search to find up-to-date information."
+                system_content += f"\n\nYou can also perform web searches when users ask for information that requires current/real-time data or information you don't have. Use this format:\n\n**WEB_SEARCH:** search query\n\nFor example, if someone asks about current events, news, stock prices, or recent information, use web search to find up-to-date information."
 
                 system_content += f"\n\nYou can also visit specific websites to read their content. Use this format:\n\n**VISIT_WEBSITE:** url\n\nFor example, if someone asks 'What does this website say?' or provides a URL, you can respond with:\n**VISIT_WEBSITE:** https://example.com\n\nThis will fetch and analyze the website's content, including text, titles, and main content areas. You can visit news sites, documentation, blogs, and most public websites."
 
@@ -674,6 +747,25 @@ class Gork(commands.Cog):
                             # Replace the command instruction with the output
                             ai_response = ai_response.replace(command_line, command_output)
 
+                elif "**GET_WEATHER:**" in ai_response:
+                    # Extract location from response
+                    lines = ai_response.split('\n')
+                    weather_line = None
+                    for line in lines:
+                        if "**GET_WEATHER:**" in line:
+                            weather_line = line
+                            break
+
+                    if weather_line:
+                        # Extract location
+                        location = weather_line.split("**GET_WEATHER:**")[1].strip()
+
+                        # Get weather data
+                        weather_results = await self.get_weather(location)
+
+                        # Replace the weather instruction with the results
+                        ai_response = ai_response.replace(weather_line, weather_results)
+
                 elif "**WEB_SEARCH:**" in ai_response:
                     # Extract search query from response
                     lines = ai_response.split('\n')
@@ -734,11 +826,15 @@ class Gork(commands.Cog):
 
         safe_commands_list = ', '.join(self.safe_commands.keys())
         web_search_status = "enabled" if self.searchapi_key else "disabled"
+        weather_status = "enabled" if self.weatherapi_key and self.weatherapi_key != "your_weatherapi_key_here" else "disabled"
 
         system_content = f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types), and listen to and transcribe audio/video files (.mp3, .wav, .mp4) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nWhen you execute fastfetch, analyze and summarize the output in a user-friendly way, highlighting key system information like OS, CPU, memory, etc. Don't just show the raw output - provide a nice summary."
 
+        if weather_status == "enabled":
+            system_content += f"\n\nYou can get current weather information for any location. When users ask about weather, use this format:\n\n**GET_WEATHER:** location\n\nFor example, if someone asks 'What's the weather in London?' you can respond with:\n**GET_WEATHER:** London\n\nThis will provide current weather conditions, temperature, humidity, wind, and a 3-day forecast. You can use city names, coordinates, or specific locations."
+
         if web_search_status == "enabled":
-            system_content += f"\n\nYou can also perform web searches when users ask for information that requires current/real-time data or information you don't have. Use this format:\n\n**WEB_SEARCH:** search query\n\nFor example, if someone asks 'What's the weather in New York?' you can respond with:\n**WEB_SEARCH:** weather New York today\n\nOr if they ask about current events, news, stock prices, or recent information, use web search to find up-to-date information."
+            system_content += f"\n\nYou can also perform web searches when users ask for information that requires current/real-time data or information you don't have. Use this format:\n\n**WEB_SEARCH:** search query\n\nFor example, if someone asks about current events, news, stock prices, or recent information, use web search to find up-to-date information."
 
             system_content += f"\n\nYou can also visit specific websites to read their content. Use this format:\n\n**VISIT_WEBSITE:** url\n\nFor example, if someone asks 'What does this website say?' or provides a URL, you can respond with:\n**VISIT_WEBSITE:** https://example.com\n\nThis will fetch and analyze the website's content, including text, titles, and main content areas. You can visit news sites, documentation, blogs, and most public websites."
 
@@ -794,6 +890,25 @@ class Gork(commands.Cog):
                 else:
                     # Replace the command instruction with the output
                     ai_response = ai_response.replace(command_line, command_output)
+
+        elif "**GET_WEATHER:**" in ai_response:
+            # Extract location from response
+            lines = ai_response.split('\n')
+            weather_line = None
+            for line in lines:
+                if "**GET_WEATHER:**" in line:
+                    weather_line = line
+                    break
+
+            if weather_line:
+                # Extract location
+                location = weather_line.split("**GET_WEATHER:**")[1].strip()
+
+                # Get weather data
+                weather_results = await self.get_weather(location)
+
+                # Replace the weather instruction with the results
+                ai_response = ai_response.replace(weather_line, weather_results)
 
         elif "**WEB_SEARCH:**" in ai_response:
             # Extract search query from response
