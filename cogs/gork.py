@@ -29,6 +29,13 @@ class Gork(commands.Cog):
         self.openrouter_url = "https://openrouter.ai/api/v1/chat/completions"
         self.model = "google/gemini-2.5-flash"
 
+        # Track processing messages to prevent duplicates
+        self.processing_messages = set()
+
+        # Import time for cleanup
+        import time
+        self.last_cleanup = time.time()
+
         # Whitelist of safe commands that can be executed
         self.safe_commands = {
             'fastfetch': 'fastfetch --stdout',
@@ -604,207 +611,234 @@ class Gork(commands.Cog):
         if message.author == self.bot.user:
             return
 
-        # Check if bot is mentioned or if it's a DM (and not from a bot)
+        # Don't respond to other bots
+        if message.author.bot:
+            return
+
+        # Check if bot is mentioned or if it's a DM
         is_dm = isinstance(message.channel, discord.DMChannel)
         is_mentioned = self.bot.user in message.mentions
 
-        if is_mentioned or (is_dm and not message.author.bot):
-            # Determine context for system message
-            context_type = "DM" if is_dm else "Discord server"
+        if is_mentioned or is_dm:
+            # Create a unique identifier for this message
+            message_id = f"{message.channel.id}_{message.id}"
 
-            # Prepare the conversation context
-            safe_commands_list = ', '.join(self.safe_commands.keys())
-            web_search_status = "enabled" if self.searchapi_key else "disabled"
-            weather_status = "enabled" if self.weatherapi_key and self.weatherapi_key != "your_weatherapi_key_here" else "disabled"
+            # Check if we're already processing this message
+            if message_id in self.processing_messages:
+                return
 
-            system_content = f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types), and listen to and transcribe audio/video files (.mp3, .wav, .mp4) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nWhen you execute fastfetch, analyze and summarize the output in a user-friendly way, highlighting key system information like OS, CPU, memory, etc. Don't just show the raw output - provide a nice summary. REMEMBER ONLY RESPOND ONCE TO REQUESTS NO EXCEPTIONS."
+            # Add to processing set
+            self.processing_messages.add(message_id)
 
-            if weather_status == "enabled":
-                system_content += f"\n\nYou can get current weather information for any location. When users ask about weather, use this format:\n\n**GET_WEATHER:** location\n\nFor example, if someone asks 'What's the weather in London?' you can respond with:\n**GET_WEATHER:** London\n\nIMPORTANT: When using GET_WEATHER, do NOT add any additional commentary or text. The weather data will be automatically formatted and displayed. Just use the GET_WEATHER command and nothing else. If you think you can't access it, don't say anything at all. REMEMBER ONLY RESPOND ONCE TO REQUESTS NO EXCEPTIONS."
+            try:
+                # Determine context for system message
+                context_type = "DM" if is_dm else "Discord server"
 
-            if web_search_status == "enabled":
-                system_content += f"\n\nYou can also perform web searches when users ask for information that requires current/real-time data or information you don't have. Use this format:\n\n**WEB_SEARCH:** search query\n\nFor example, if someone asks about current events, news, stock prices, or recent information, use web search to find up-to-date information.\n\nIMPORTANT: When using WEB_SEARCH, do NOT add any additional commentary or text. The search results will be automatically formatted and displayed. REMEMBER ONLY RESPOND ONCE TO REQUESTS NO EXCEPTIONS."
+                # Prepare the conversation context
+                safe_commands_list = ', '.join(self.safe_commands.keys())
+                web_search_status = "enabled" if self.searchapi_key else "disabled"
+                weather_status = "enabled" if self.weatherapi_key and self.weatherapi_key != "your_weatherapi_key_here" else "disabled"
 
-                system_content += f"\n\nYou can also visit specific websites to read their content. Use this format:\n\n**VISIT_WEBSITE:** url\n\nFor example, if someone asks 'What does this website say?' or provides a URL, you can respond with:\n**VISIT_WEBSITE:** https://example.com\n\nIMPORTANT: When using VISIT_WEBSITE, do NOT add any additional commentary or text. The website content will be automatically formatted and displayed. REMEMBER ONLY RESPOND ONCE TO REQUESTS NO EXCEPTIONS."
+                system_content = f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types), and listen to and transcribe audio/video files (.mp3, .wav, .mp4) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nWhen you execute fastfetch, analyze and summarize the output in a user-friendly way, highlighting key system information like OS, CPU, memory, etc. Don't just show the raw output - provide a nice summary. REMEMBER ONLY RESPOND ONCE TO REQUESTS NO EXCEPTIONS."
 
-            system_content += "\n\nKeep responses under 2000 characters to fit Discord's message limit."
+                if weather_status == "enabled":
+                    system_content += f"\n\nYou can get current weather information for any location. When users ask about weather, use this format:\n\n**GET_WEATHER:** location\n\nFor example, if someone asks 'What's the weather in London?' you can respond with:\n**GET_WEATHER:** London\n\nIMPORTANT: When using GET_WEATHER, do NOT add any additional commentary or text. The weather data will be automatically formatted and displayed. Just use the GET_WEATHER command and nothing else. If you think you can't access it, don't say anything at all. REMEMBER ONLY RESPOND ONCE TO REQUESTS NO EXCEPTIONS."
 
-            messages = [
-                {
-                    "role": "system",
-                    "content": system_content
-                }
-            ]
+                if web_search_status == "enabled":
+                    system_content += f"\n\nYou can also perform web searches when users ask for information that requires current/real-time data or information you don't have. Use this format:\n\n**WEB_SEARCH:** search query\n\nFor example, if someone asks about current events, news, stock prices, or recent information, use web search to find up-to-date information.\n\nIMPORTANT: When using WEB_SEARCH, do NOT add any additional commentary or text. The search results will be automatically formatted and displayed. REMEMBER ONLY RESPOND ONCE TO REQUESTS NO EXCEPTIONS."
 
-            # If the message is a reply, get the replied-to message content and files
-            replied_content = ""
-            replied_files = []
-            if message.reference and message.reference.message_id:
-                try:
-                    replied_message = await message.channel.fetch_message(message.reference.message_id)
-                    replied_content = f"\n\nContext (message being replied to):\nFrom {replied_message.author.display_name}: {replied_message.content}"
-                    # Also get files from the replied message
-                    replied_files = await self.process_files(replied_message)
-                except:
-                    replied_content = ""
-                    replied_files = []
+                    system_content += f"\n\nYou can also visit specific websites to read their content. Use this format:\n\n**VISIT_WEBSITE:** url\n\nFor example, if someone asks 'What does this website say?' or provides a URL, you can respond with:\n**VISIT_WEBSITE:** https://example.com\n\nIMPORTANT: When using VISIT_WEBSITE, do NOT add any additional commentary or text. The website content will be automatically formatted and displayed. REMEMBER ONLY RESPOND ONCE TO REQUESTS NO EXCEPTIONS."
 
-            # Add user message
-            user_content = message.content.replace(f'<@{self.bot.user.id}>', '').strip()
+                system_content += "\n\nKeep responses under 2000 characters to fit Discord's message limit."
 
-            # In DMs, if there's no content after removing mention, use the original message
-            if is_dm and not user_content:
-                user_content = message.content.strip()
+                messages = [
+                    {
+                        "role": "system",
+                        "content": system_content
+                    }
+                ]
 
-            if replied_content:
-                user_content += replied_content
+                # If the message is a reply, get the replied-to message content and files
+                replied_content = ""
+                replied_files = []
+                if message.reference and message.reference.message_id:
+                    try:
+                        replied_message = await message.channel.fetch_message(message.reference.message_id)
+                        replied_content = f"\n\nContext (message being replied to):\nFrom {replied_message.author.display_name}: {replied_message.content}"
+                        # Also get files from the replied message
+                        replied_files = await self.process_files(replied_message)
+                    except:
+                        replied_content = ""
+                        replied_files = []
 
-            # Process files and images from the message
-            file_contents = await self.process_files(message)
+                # Add user message
+                user_content = message.content.replace(f'<@{self.bot.user.id}>', '').strip()
 
-            # Combine current message files with replied message files
-            all_files = file_contents + replied_files
+                # In DMs, if there's no content after removing mention, use the original message
+                if is_dm and not user_content:
+                    user_content = message.content.strip()
 
-            # Create the user message content
-            if all_files:
-                # If there are files/images, create a content array with text and files
-                content_parts = []
+                if replied_content:
+                    user_content += replied_content
 
-                # Add text content if it exists
-                if user_content:
-                    content_parts.append({
-                        "type": "text",
-                        "text": user_content
+                # Process files and images from the message
+                file_contents = await self.process_files(message)
+
+                # Combine current message files with replied message files
+                all_files = file_contents + replied_files
+
+                # Create the user message content
+                if all_files:
+                    # If there are files/images, create a content array with text and files
+                    content_parts = []
+
+                    # Add text content if it exists
+                    if user_content:
+                        content_parts.append({
+                            "type": "text",
+                            "text": user_content
+                        })
+                    else:
+                        # If no text but there are files, add a default prompt
+                        content_parts.append({
+                            "type": "text",
+                            "text": "Please analyze the attached files/images."
+                        })
+
+                    # Add all file contents (from current message and replied message)
+                    content_parts.extend(all_files)
+
+                    messages.append({
+                        "role": "user",
+                        "content": content_parts
                     })
                 else:
-                    # If no text but there are files, add a default prompt
-                    content_parts.append({
-                        "type": "text",
-                        "text": "Please analyze the attached files/images."
+                    # No files/images, just text content
+                    messages.append({
+                        "role": "user",
+                        "content": user_content
                     })
 
-                # Add all file contents (from current message and replied message)
-                content_parts.extend(all_files)
+                # Show typing indicator
+                async with message.channel.typing():
+                    # Get AI response
+                    ai_response = await self.call_ai(messages)
 
-                messages.append({
-                    "role": "user",
-                    "content": content_parts
-                })
-            else:
-                # No files/images, just text content
-                messages.append({
-                    "role": "user",
-                    "content": user_content
-                })
+                    # Check if the AI wants to execute a command or perform a Google search
+                    if "**EXECUTE_COMMAND:**" in ai_response:
+                        # Extract command from response
+                        lines = ai_response.split('\n')
+                        command_line = None
+                        for line in lines:
+                            if "**EXECUTE_COMMAND:**" in line:
+                                command_line = line
+                                break
 
-            # Show typing indicator
-            async with message.channel.typing():
-                # Get AI response
-                ai_response = await self.call_ai(messages)
+                        if command_line:
+                            # Extract command name
+                            command_name = command_line.split("**EXECUTE_COMMAND:**")[1].strip()
 
-                # Check if the AI wants to execute a command or perform a Google search
-                if "**EXECUTE_COMMAND:**" in ai_response:
-                    # Extract command from response
-                    lines = ai_response.split('\n')
-                    command_line = None
-                    for line in lines:
-                        if "**EXECUTE_COMMAND:**" in line:
-                            command_line = line
-                            break
+                            # Execute the command
+                            command_output = await self.execute_safe_command(command_name)
 
-                    if command_line:
-                        # Extract command name
-                        command_name = command_line.split("**EXECUTE_COMMAND:**")[1].strip()
+                            # If it's fastfetch, ask AI to summarize the output
+                            if command_name == 'fastfetch' and not command_output.startswith('❌'):
+                                # Create a new message to ask AI to summarize fastfetch output
+                                summary_messages = [
+                                    {
+                                        "role": "system",
+                                        "content": "You are Gork, a helpful AI assistant. Analyze the following fastfetch output and provide a concise, user-friendly summary of the system information. Highlight key details like OS, CPU, memory, storage, etc. Format it nicely for Discord."
+                                    },
+                                    {
+                                        "role": "user",
+                                        "content": f"Please summarize this fastfetch output:\n\n{command_output}"
+                                    }
+                                ]
 
-                        # Execute the command
-                        command_output = await self.execute_safe_command(command_name)
+                                # Get AI summary
+                                summary_response = await self.call_ai(summary_messages, max_tokens=800)
+                                ai_response = ai_response.replace(command_line, summary_response, 1)
+                            else:
+                                # Replace only the specific command instruction line with the output
+                                ai_response = ai_response.replace(command_line, command_output, 1)
 
-                        # If it's fastfetch, ask AI to summarize the output
-                        if command_name == 'fastfetch' and not command_output.startswith('❌'):
-                            # Create a new message to ask AI to summarize fastfetch output
-                            summary_messages = [
-                                {
-                                    "role": "system",
-                                    "content": "You are Gork, a helpful AI assistant. Analyze the following fastfetch output and provide a concise, user-friendly summary of the system information. Highlight key details like OS, CPU, memory, storage, etc. Format it nicely for Discord."
-                                },
-                                {
-                                    "role": "user",
-                                    "content": f"Please summarize this fastfetch output:\n\n{command_output}"
-                                }
-                            ]
+                    elif "**GET_WEATHER:**" in ai_response:
+                        # Extract location from response
+                        lines = ai_response.split('\n')
+                        weather_line = None
+                        for line in lines:
+                            if "**GET_WEATHER:**" in line:
+                                weather_line = line
+                                break
 
-                            # Get AI summary
-                            summary_response = await self.call_ai(summary_messages, max_tokens=800)
-                            ai_response = ai_response.replace(command_line, summary_response, 1)
-                        else:
-                            # Replace only the specific command instruction line with the output
-                            ai_response = ai_response.replace(command_line, command_output, 1)
+                        if weather_line:
+                            # Extract location
+                            location = weather_line.split("**GET_WEATHER:**")[1].strip()
 
-                elif "**GET_WEATHER:**" in ai_response:
-                    # Extract location from response
-                    lines = ai_response.split('\n')
-                    weather_line = None
-                    for line in lines:
-                        if "**GET_WEATHER:**" in line:
-                            weather_line = line
-                            break
+                            # Get weather data
+                            weather_results = await self.get_weather(location)
 
-                    if weather_line:
-                        # Extract location
-                        location = weather_line.split("**GET_WEATHER:**")[1].strip()
+                            # Replace only the specific weather instruction line with the results
+                            ai_response = ai_response.replace(weather_line, weather_results, 1)
 
-                        # Get weather data
-                        weather_results = await self.get_weather(location)
+                    elif "**WEB_SEARCH:**" in ai_response:
+                        # Extract search query from response
+                        lines = ai_response.split('\n')
+                        search_line = None
+                        for line in lines:
+                            if "**WEB_SEARCH:**" in line:
+                                search_line = line
+                                break
 
-                        # Replace only the specific weather instruction line with the results
-                        ai_response = ai_response.replace(weather_line, weather_results, 1)
+                        if search_line:
+                            # Extract search query
+                            search_query = search_line.split("**WEB_SEARCH:**")[1].strip()
 
-                elif "**WEB_SEARCH:**" in ai_response:
-                    # Extract search query from response
-                    lines = ai_response.split('\n')
-                    search_line = None
-                    for line in lines:
-                        if "**WEB_SEARCH:**" in line:
-                            search_line = line
-                            break
+                            # Perform web search
+                            search_results = await self.web_search(search_query)
 
-                    if search_line:
-                        # Extract search query
-                        search_query = search_line.split("**WEB_SEARCH:**")[1].strip()
+                            # Replace only the specific search instruction line with the results
+                            ai_response = ai_response.replace(search_line, search_results, 1)
 
-                        # Perform web search
-                        search_results = await self.web_search(search_query)
+                    elif "**VISIT_WEBSITE:**" in ai_response:
+                        # Extract website URL from response
+                        lines = ai_response.split('\n')
+                        visit_line = None
+                        for line in lines:
+                            if "**VISIT_WEBSITE:**" in line:
+                                visit_line = line
+                                break
 
-                        # Replace only the specific search instruction line with the results
-                        ai_response = ai_response.replace(search_line, search_results, 1)
+                        if visit_line:
+                            # Extract website URL
+                            website_url = visit_line.split("**VISIT_WEBSITE:**")[1].strip()
 
-                elif "**VISIT_WEBSITE:**" in ai_response:
-                    # Extract website URL from response
-                    lines = ai_response.split('\n')
-                    visit_line = None
-                    for line in lines:
-                        if "**VISIT_WEBSITE:**" in line:
-                            visit_line = line
-                            break
+                            # Visit the website
+                            website_content = await self.visit_website(website_url)
 
-                    if visit_line:
-                        # Extract website URL
-                        website_url = visit_line.split("**VISIT_WEBSITE:**")[1].strip()
+                            # Replace only the specific visit instruction line with the content
+                            ai_response = ai_response.replace(visit_line, website_content, 1)
 
-                        # Visit the website
-                        website_content = await self.visit_website(website_url)
+                    # Split response if it's too long for Discord
+                    if len(ai_response) > 2000:
+                        # Split into chunks of 2000 characters
+                        chunks = [ai_response[i:i+2000] for i in range(0, len(ai_response), 2000)]
+                        for chunk in chunks:
+                            await message.reply(chunk)
+                    else:
+                        await message.reply(ai_response)
 
-                        # Replace only the specific visit instruction line with the content
-                        ai_response = ai_response.replace(visit_line, website_content, 1)
+            finally:
+                # Remove from processing set
+                self.processing_messages.discard(message_id)
 
-                # Split response if it's too long for Discord
-                if len(ai_response) > 2000:
-                    # Split into chunks of 2000 characters
-                    chunks = [ai_response[i:i+2000] for i in range(0, len(ai_response), 2000)]
-                    for chunk in chunks:
-                        await message.reply(chunk)
-                else:
-                    await message.reply(ai_response)
+                # Periodic cleanup of processing set (every 100 messages)
+                import time
+                current_time = time.time()
+                if current_time - self.last_cleanup > 300:  # 5 minutes
+                    # Clear the processing set periodically to prevent memory leaks
+                    self.processing_messages.clear()
+                    self.last_cleanup = current_time
 
     @app_commands.command(name="gork", description="Chat with Gork AI (for files/images/audio, mention me in a message with attachments)")
     @app_commands.allowed_installs(guilds=True, users=True)
