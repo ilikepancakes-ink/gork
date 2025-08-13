@@ -18,6 +18,8 @@ import tempfile
 import speech_recognition as sr
 from pydub import AudioSegment
 from moviepy.editor import VideoFileClip
+from bs4 import BeautifulSoup
+import re
 
 class Gork(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -387,6 +389,121 @@ class Gork(commands.Cog):
         except Exception as e:
             return f"❌ Error performing web search: {str(e)}"
 
+    async def visit_website(self, url: str) -> str:
+        """Visit a website and extract its content"""
+        try:
+            # Validate URL format
+            if not url.startswith(('http://', 'https://')):
+                url = 'https://' + url
+
+            # Parse URL to check if it's valid
+            parsed_url = urllib.parse.urlparse(url)
+            if not parsed_url.netloc:
+                return f"❌ Invalid URL format: {url}"
+
+            # Set up headers to mimic a real browser
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+                'Accept-Language': 'en-US,en;q=0.5',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive',
+                'Upgrade-Insecure-Requests': '1',
+            }
+
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=30)) as session:
+                async with session.get(url, headers=headers) as response:
+                    if response.status == 200:
+                        # Check content type
+                        content_type = response.headers.get('content-type', '').lower()
+
+                        if 'text/html' in content_type:
+                            # Get HTML content
+                            html_content = await response.text()
+
+                            # Parse HTML with BeautifulSoup
+                            soup = BeautifulSoup(html_content, 'html.parser')
+
+                            # Remove script and style elements
+                            for script in soup(["script", "style", "nav", "footer", "header"]):
+                                script.decompose()
+
+                            # Get page title
+                            title = soup.find('title')
+                            title_text = title.get_text().strip() if title else "No title"
+
+                            # Get main content
+                            # Try to find main content areas
+                            main_content = soup.find('main') or soup.find('article') or soup.find('div', class_=re.compile(r'content|main|article', re.I)) or soup.find('body')
+
+                            if main_content:
+                                # Extract text content
+                                text_content = main_content.get_text(separator='\n', strip=True)
+                            else:
+                                text_content = soup.get_text(separator='\n', strip=True)
+
+                            # Clean up the text
+                            lines = text_content.split('\n')
+                            cleaned_lines = []
+                            for line in lines:
+                                line = line.strip()
+                                if line and len(line) > 3:  # Filter out very short lines
+                                    cleaned_lines.append(line)
+
+                            cleaned_text = '\n'.join(cleaned_lines)
+
+                            # Limit content length to prevent overwhelming Discord/AI
+                            max_length = 4000  # Reasonable limit for Discord and AI processing
+                            if len(cleaned_text) > max_length:
+                                cleaned_text = cleaned_text[:max_length] + "\n\n... (content truncated due to length)"
+
+                            # Format the response
+                            formatted_response = f"🌐 **Website Content from:** {url}\n"
+                            formatted_response += f"📄 **Title:** {title_text}\n\n"
+                            formatted_response += f"**Content:**\n{cleaned_text}"
+
+                            return formatted_response
+
+                        elif 'application/json' in content_type:
+                            # Handle JSON content
+                            json_content = await response.json()
+                            json_str = json.dumps(json_content, indent=2)
+
+                            # Limit JSON length
+                            if len(json_str) > 3000:
+                                json_str = json_str[:3000] + "\n... (JSON truncated due to length)"
+
+                            return f"🌐 **JSON Content from:** {url}\n```json\n{json_str}\n```"
+
+                        elif 'text/plain' in content_type:
+                            # Handle plain text
+                            text_content = await response.text()
+
+                            # Limit text length
+                            if len(text_content) > 4000:
+                                text_content = text_content[:4000] + "\n... (content truncated due to length)"
+
+                            return f"🌐 **Text Content from:** {url}\n```\n{text_content}\n```"
+
+                        else:
+                            return f"🌐 **Website:** {url}\n❌ Unsupported content type: {content_type}\nThis appears to be a binary file or unsupported format."
+
+                    elif response.status == 403:
+                        return f"🌐 **Website:** {url}\n❌ Access forbidden (403). The website blocks automated access."
+                    elif response.status == 404:
+                        return f"🌐 **Website:** {url}\n❌ Page not found (404)."
+                    elif response.status == 429:
+                        return f"🌐 **Website:** {url}\n❌ Too many requests (429). The website is rate limiting."
+                    else:
+                        return f"🌐 **Website:** {url}\n❌ HTTP Error {response.status}: {response.reason}"
+
+        except asyncio.TimeoutError:
+            return f"🌐 **Website:** {url}\n❌ Request timed out after 30 seconds."
+        except aiohttp.ClientError as e:
+            return f"🌐 **Website:** {url}\n❌ Connection error: {str(e)}"
+        except Exception as e:
+            return f"🌐 **Website:** {url}\n❌ Error visiting website: {str(e)}"
+
     async def call_ai(self, messages, max_tokens=1000):
         """Make a call to OpenRouter API with the Llama model"""
         if not self.openrouter_api_key:
@@ -441,6 +558,8 @@ class Gork(commands.Cog):
 
             if web_search_status == "enabled":
                 system_content += f"\n\nYou can also perform web searches when users ask for information that requires current/real-time data or information you don't have. Use this format:\n\n**WEB_SEARCH:** search query\n\nFor example, if someone asks 'What's the weather in New York?' you can respond with:\n**WEB_SEARCH:** weather New York today\n\nOr if they ask about current events, news, stock prices, or recent information, use web search to find up-to-date information."
+
+                system_content += f"\n\nYou can also visit specific websites to read their content. Use this format:\n\n**VISIT_WEBSITE:** url\n\nFor example, if someone asks 'What does this website say?' or provides a URL, you can respond with:\n**VISIT_WEBSITE:** https://example.com\n\nThis will fetch and analyze the website's content, including text, titles, and main content areas. You can visit news sites, documentation, blogs, and most public websites."
 
             system_content += "\n\nKeep responses under 2000 characters to fit Discord's message limit."
 
@@ -574,6 +693,25 @@ class Gork(commands.Cog):
                         # Replace the search instruction with the results
                         ai_response = ai_response.replace(search_line, search_results)
 
+                elif "**VISIT_WEBSITE:**" in ai_response:
+                    # Extract website URL from response
+                    lines = ai_response.split('\n')
+                    visit_line = None
+                    for line in lines:
+                        if "**VISIT_WEBSITE:**" in line:
+                            visit_line = line
+                            break
+
+                    if visit_line:
+                        # Extract website URL
+                        website_url = visit_line.split("**VISIT_WEBSITE:**")[1].strip()
+
+                        # Visit the website
+                        website_content = await self.visit_website(website_url)
+
+                        # Replace the visit instruction with the content
+                        ai_response = ai_response.replace(visit_line, website_content)
+
                 # Split response if it's too long for Discord
                 if len(ai_response) > 2000:
                     # Split into chunks of 2000 characters
@@ -601,6 +739,8 @@ class Gork(commands.Cog):
 
         if web_search_status == "enabled":
             system_content += f"\n\nYou can also perform web searches when users ask for information that requires current/real-time data or information you don't have. Use this format:\n\n**WEB_SEARCH:** search query\n\nFor example, if someone asks 'What's the weather in New York?' you can respond with:\n**WEB_SEARCH:** weather New York today\n\nOr if they ask about current events, news, stock prices, or recent information, use web search to find up-to-date information."
+
+            system_content += f"\n\nYou can also visit specific websites to read their content. Use this format:\n\n**VISIT_WEBSITE:** url\n\nFor example, if someone asks 'What does this website say?' or provides a URL, you can respond with:\n**VISIT_WEBSITE:** https://example.com\n\nThis will fetch and analyze the website's content, including text, titles, and main content areas. You can visit news sites, documentation, blogs, and most public websites."
 
         system_content += "\n\nKeep responses under 2000 characters to fit Discord's message limit."
 
@@ -674,6 +814,25 @@ class Gork(commands.Cog):
                 # Replace the search instruction with the results
                 ai_response = ai_response.replace(search_line, search_results)
 
+        elif "**VISIT_WEBSITE:**" in ai_response:
+            # Extract website URL from response
+            lines = ai_response.split('\n')
+            visit_line = None
+            for line in lines:
+                if "**VISIT_WEBSITE:**" in line:
+                    visit_line = line
+                    break
+
+            if visit_line:
+                # Extract website URL
+                website_url = visit_line.split("**VISIT_WEBSITE:**")[1].strip()
+
+                # Visit the website
+                website_content = await self.visit_website(website_url)
+
+                # Replace the visit instruction with the content
+                ai_response = ai_response.replace(visit_line, website_content)
+
         # Split response if it's too long for Discord
         if len(ai_response) > 2000:
             # Split into chunks of 2000 characters
@@ -704,10 +863,13 @@ class Gork(commands.Cog):
             # Check web search status
             web_search_status = "✅ Web Search (SearchAPI.io)" if self.searchapi_key else "❌ Web Search (not configured)"
 
+            # Website visiting is always available (doesn't require API key)
+            website_visit_status = "✅ Website visiting and content extraction"
+
             # Check audio transcription status
             audio_status = "✅ Audio/Video transcription (.mp3, .wav, .mp4)" if self.whisper_model else "❌ Audio transcription (Whisper not loaded)"
 
-            capabilities = f"✅ Text chat\n✅ Image analysis\n✅ File reading (.txt, .py, .js, .html, .css, .json, .md, etc.)\n✅ Binary file analysis (.bin)\n{audio_status}\n✅ Safe system command execution\n{web_search_status}"
+            capabilities = f"✅ Text chat\n✅ Image analysis\n✅ File reading (.txt, .py, .js, .html, .css, .json, .md, etc.)\n✅ Binary file analysis (.bin)\n{audio_status}\n✅ Safe system command execution\n{web_search_status}\n{website_visit_status}"
             embed.add_field(name="Capabilities", value=capabilities, inline=False)
             embed.add_field(name="Safe Commands", value=f"Available: {', '.join(list(self.safe_commands.keys())[:10])}{'...' if len(self.safe_commands) > 10 else ''}", inline=False)
             embed.add_field(name="Usage", value=usage_text, inline=False)

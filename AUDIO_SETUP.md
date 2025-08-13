@@ -2,6 +2,8 @@
 
 Gork now supports listening to and transcribing audio/video files! Users can attach .mp3, .wav, and .mp4 files to messages that mention the bot, and Gork will automatically transcribe the audio content.
 
+**✅ VPS-Friendly**: This setup works perfectly on CPU-only VPS servers - no GPU or CUDA required!
+
 ## Setup Instructions
 
 ### 1. Install System Dependencies
@@ -35,7 +37,17 @@ This will install:
 - `pydub>=0.25.1` - Audio processing library
 - `SpeechRecognition>=3.10.0` - Speech recognition library
 - `moviepy>=1.0.3` - Video processing library
-- `openai-whisper>=20231117` - OpenAI's Whisper model for transcription
+- `openai-whisper>=20231117` - OpenAI's Whisper model for transcription (CPU-only version)
+
+**Important**: This setup is optimized for VPS environments and does NOT require:
+- ❌ CUDA drivers
+- ❌ GPU support
+- ❌ Special hardware
+- ✅ Works on any CPU-only VPS!
+- `torch>=2.0.0` - PyTorch (CPU version is sufficient)
+- `torchaudio>=2.0.0` - Audio processing for PyTorch
+
+**Note**: CUDA/GPU drivers are NOT required! The bot works perfectly on CPU-only systems.
 
 ### 3. First Run
 
@@ -91,9 +103,11 @@ Once configured, users can:
 
 ### Performance Notes:
 
-- Transcription time depends on audio length and system performance
+- **VPS-Optimized**: Runs efficiently on CPU-only VPS servers
+- Transcription time depends on audio length and CPU performance
 - The "base" Whisper model provides good accuracy for most use cases
 - Processing happens locally on your server (no external API calls for transcription)
+- Typical performance: ~1-2 minutes of audio transcribed per minute of processing time on a standard VPS
 
 ## Status Check
 
