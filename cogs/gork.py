@@ -9,6 +9,15 @@ import asyncio
 import subprocess
 from dotenv import load_dotenv
 import urllib.parse
+import tempfile
+import speech_recognition as sr
+from pydub import AudioSegment
+from moviepy.editor import VideoFileClip
+import whisper
+import tempfile
+import speech_recognition as sr
+from pydub import AudioSegment
+from moviepy.editor import VideoFileClip
 
 class Gork(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -52,6 +61,91 @@ class Gork(commands.Cog):
         if not self.searchapi_key:
             print("Warning: SEARCHAPI_KEY not found. Web search functionality will be disabled.")
 
+        # Initialize Whisper model for audio transcription
+        try:
+            self.whisper_model = whisper.load_model("base")
+            print("Whisper model loaded successfully for audio transcription")
+        except Exception as e:
+            print(f"Warning: Failed to load Whisper model: {e}")
+            self.whisper_model = None
+
+    async def transcribe_audio(self, audio_data: bytes, filename: str) -> str:
+        """Transcribe audio data using Whisper"""
+        if not self.whisper_model:
+            return "❌ Audio transcription is not available (Whisper model not loaded)"
+
+        try:
+            # Create temporary files for input and output
+            input_suffix = '.mp3' if filename.lower().endswith('.mp3') else '.wav' if filename.lower().endswith('.wav') else '.mp4'
+
+            with tempfile.NamedTemporaryFile(delete=False, suffix=input_suffix) as input_file:
+                input_path = input_file.name
+                input_file.write(audio_data)
+                input_file.flush()
+
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as output_file:
+                output_path = output_file.name
+
+                # Convert audio to WAV format using pydub
+                try:
+                    # Load audio from the temporary input file
+                    if filename.lower().endswith('.mp3'):
+                        audio = AudioSegment.from_mp3(input_path)
+                    elif filename.lower().endswith('.wav'):
+                        audio = AudioSegment.from_wav(input_path)
+                    elif filename.lower().endswith('.mp4'):
+                        # For MP4, extract audio using moviepy first
+                        try:
+                            with VideoFileClip(input_path) as video:
+                                audio_clip = video.audio
+                                if audio_clip:
+                                    # Export audio to temporary file
+                                    temp_audio_path = input_path.replace('.mp4', '_audio.wav')
+                                    audio_clip.write_audiofile(temp_audio_path, verbose=False, logger=None)
+                                    audio = AudioSegment.from_wav(temp_audio_path)
+                                    # Clean up temporary audio file
+                                    try:
+                                        os.unlink(temp_audio_path)
+                                    except:
+                                        pass
+                                else:
+                                    return f"❌ No audio track found in video file {filename}"
+                        except Exception as e:
+                            # Fallback to pydub for MP4
+                            audio = AudioSegment.from_file(input_path, format="mp4")
+                    else:
+                        # Try to auto-detect format
+                        audio = AudioSegment.from_file(input_path)
+
+                    # Export as WAV for Whisper
+                    audio.export(output_path, format="wav")
+
+                except Exception as e:
+                    # If conversion fails, try to use the original file directly
+                    output_path = input_path
+
+            # Transcribe using Whisper
+            result = self.whisper_model.transcribe(output_path)
+            transcription = result["text"].strip()
+
+            # Clean up temporary files
+            try:
+                os.unlink(input_path)
+            except:
+                pass
+            try:
+                os.unlink(output_path)
+            except:
+                pass
+
+            if transcription:
+                return f"🎵 Audio transcription from {filename}:\n\"{transcription}\""
+            else:
+                return f"🎵 Audio file {filename} processed but no speech detected"
+
+        except Exception as e:
+            return f"❌ Error transcribing audio from {filename}: {str(e)}"
+
     async def process_files(self, message):
         """Process files and images from a Discord message and return them in the format expected by the AI API"""
         content_parts = []
@@ -64,6 +158,9 @@ class Gork(commands.Cog):
 
         # Define supported binary file extensions for analysis
         binary_extensions = {'.bin'}
+
+        # Define supported audio/video file extensions
+        audio_video_extensions = {'.mp3', '.wav', '.mp4'}
 
         # Check for attachments
         for attachment in message.attachments:
@@ -135,6 +232,31 @@ class Gork(commands.Cog):
                                            f"Hex Preview (first 256 bytes):\n```\n{hex_preview}\n```\n"
                                            f"Note: This is a binary file. I can analyze its structure, size, and hex data."
                                 })
+
+                # Handle audio/video files (.mp3, .wav, .mp4)
+                elif any(attachment.filename.lower().endswith(ext) for ext in audio_video_extensions):
+                    # Download the audio/video file for transcription
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(attachment.url) as response:
+                            if response.status == 200:
+                                audio_data = await response.read()
+                                file_size = len(audio_data)
+
+                                # Check file size limit (50MB for audio/video files)
+                                if file_size > 50 * 1024 * 1024:  # 50MB limit
+                                    content_parts.append({
+                                        "type": "text",
+                                        "text": f"🎵 Audio/Video File: {attachment.filename}\n"
+                                               f"Size: {file_size / (1024*1024):.1f} MB\n"
+                                               f"❌ File too large for transcription (max 50MB)"
+                                    })
+                                else:
+                                    # Transcribe the audio
+                                    transcription = await self.transcribe_audio(audio_data, attachment.filename)
+                                    content_parts.append({
+                                        "type": "text",
+                                        "text": transcription
+                                    })
 
             except Exception as e:
                 print(f"Error processing attachment {attachment.filename}: {e}")
@@ -315,7 +437,7 @@ class Gork(commands.Cog):
             safe_commands_list = ', '.join(self.safe_commands.keys())
             web_search_status = "enabled" if self.searchapi_key else "disabled"
 
-            system_content = f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, and read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nWhen you execute fastfetch, analyze and summarize the output in a user-friendly way, highlighting key system information like OS, CPU, memory, etc. Don't just show the raw output - provide a nice summary."
+            system_content = f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types), and listen to and transcribe audio/video files (.mp3, .wav, .mp4) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nWhen you execute fastfetch, analyze and summarize the output in a user-friendly way, highlighting key system information like OS, CPU, memory, etc. Don't just show the raw output - provide a nice summary."
 
             if web_search_status == "enabled":
                 system_content += f"\n\nYou can also perform web searches when users ask for information that requires current/real-time data or information you don't have. Use this format:\n\n**WEB_SEARCH:** search query\n\nFor example, if someone asks 'What's the weather in New York?' you can respond with:\n**WEB_SEARCH:** weather New York today\n\nOr if they ask about current events, news, stock prices, or recent information, use web search to find up-to-date information."
@@ -461,7 +583,7 @@ class Gork(commands.Cog):
                 else:
                     await message.reply(ai_response)
 
-    @app_commands.command(name="gork", description="Chat with Gork AI (for files/images, mention me in a message with attachments)")
+    @app_commands.command(name="gork", description="Chat with Gork AI (for files/images/audio, mention me in a message with attachments)")
     @app_commands.allowed_installs(guilds=True, users=True)
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def gork_command(self, interaction: discord.Interaction, message: str):
@@ -475,7 +597,7 @@ class Gork(commands.Cog):
         safe_commands_list = ', '.join(self.safe_commands.keys())
         web_search_status = "enabled" if self.searchapi_key else "disabled"
 
-        system_content = f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, and read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nWhen you execute fastfetch, analyze and summarize the output in a user-friendly way, highlighting key system information like OS, CPU, memory, etc. Don't just show the raw output - provide a nice summary."
+        system_content = f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types), and listen to and transcribe audio/video files (.mp3, .wav, .mp4) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nWhen you execute fastfetch, analyze and summarize the output in a user-friendly way, highlighting key system information like OS, CPU, memory, etc. Don't just show the raw output - provide a nice summary."
 
         if web_search_status == "enabled":
             system_content += f"\n\nYou can also perform web searches when users ask for information that requires current/real-time data or information you don't have. Use this format:\n\n**WEB_SEARCH:** search query\n\nFor example, if someone asks 'What's the weather in New York?' you can respond with:\n**WEB_SEARCH:** weather New York today\n\nOr if they ask about current events, news, stock prices, or recent information, use web search to find up-to-date information."
@@ -582,7 +704,10 @@ class Gork(commands.Cog):
             # Check web search status
             web_search_status = "✅ Web Search (SearchAPI.io)" if self.searchapi_key else "❌ Web Search (not configured)"
 
-            capabilities = f"✅ Text chat\n✅ Image analysis\n✅ File reading (.txt, .py, .js, .html, .css, .json, .md, etc.)\n✅ Binary file analysis (.bin)\n✅ Safe system command execution\n{web_search_status}"
+            # Check audio transcription status
+            audio_status = "✅ Audio/Video transcription (.mp3, .wav, .mp4)" if self.whisper_model else "❌ Audio transcription (Whisper not loaded)"
+
+            capabilities = f"✅ Text chat\n✅ Image analysis\n✅ File reading (.txt, .py, .js, .html, .css, .json, .md, etc.)\n✅ Binary file analysis (.bin)\n{audio_status}\n✅ Safe system command execution\n{web_search_status}"
             embed.add_field(name="Capabilities", value=capabilities, inline=False)
             embed.add_field(name="Safe Commands", value=f"Available: {', '.join(list(self.safe_commands.keys())[:10])}{'...' if len(self.safe_commands) > 10 else ''}", inline=False)
             embed.add_field(name="Usage", value=usage_text, inline=False)
