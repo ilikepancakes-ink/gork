@@ -431,27 +431,20 @@ class Gork(commands.Cog):
             location_info = data["location"]
             forecast = data["forecast"]["forecastday"]
 
-            # Current weather
-            response = f"🌤️ **Weather for {location_info['name']}, {location_info['region']}, {location_info['country']}**\n\n"
-            response += f"**Current Conditions** ({location_info['localtime']})\n"
-            response += f"🌡️ **Temperature:** {current['temp_c']}°C ({current['temp_f']}°F)\n"
-            response += f"🌡️ **Feels like:** {current['feelslike_c']}°C ({current['feelslike_f']}°F)\n"
-            response += f"☁️ **Condition:** {current['condition']['text']}\n"
-            response += f"💨 **Wind:** {current['wind_kph']} km/h {current['wind_dir']}\n"
-            response += f"💧 **Humidity:** {current['humidity']}%\n"
+            # Current weather - more concise format
+            response = f"🌤️ **{location_info['name']}, {location_info['region']}, {location_info['country']}**\n"
+            response += f"🌡️ **{current['temp_c']}°C** ({current['temp_f']}°F) • Feels like {current['feelslike_c']}°C\n"
+            response += f"☁️ {current['condition']['text']}\n"
+            response += f"💨 Wind: {current['wind_kph']} km/h {current['wind_dir']} • 💧 Humidity: {current['humidity']}%\n"
 
             # Today's forecast
             if forecast:
                 today = forecast[0]["day"]
-                response += f"\n**Today's Forecast**\n"
-                response += f"🌡️ **High/Low:** {today['maxtemp_c']}°C / {today['mintemp_c']}°C\n"
-                response += f"🌧️ **Rain chance:** {today['daily_chance_of_rain']}%\n"
+                response += f"🌡️ High/Low: {today['maxtemp_c']}°C / {today['mintemp_c']}°C • 🌧️ Rain: {today['daily_chance_of_rain']}%"
 
-            # Weather alerts
+            # Weather alerts (only if present)
             if "alerts" in data and data["alerts"]["alert"]:
-                response += f"\n⚠️ **Weather Alerts:**\n"
-                for alert in data["alerts"]["alert"][:1]:  # Limit to 1 alert for space
-                    response += f"• {alert['headline']}\n"
+                response += f"\n⚠️ **Alert:** {data['alerts']['alert'][0]['headline']}"
 
             return response
 
@@ -627,12 +620,12 @@ class Gork(commands.Cog):
             system_content = f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types), and listen to and transcribe audio/video files (.mp3, .wav, .mp4) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nWhen you execute fastfetch, analyze and summarize the output in a user-friendly way, highlighting key system information like OS, CPU, memory, etc. Don't just show the raw output - provide a nice summary."
 
             if weather_status == "enabled":
-                system_content += f"\n\nYou can get current weather information for any location. When users ask about weather, use this format:\n\n**GET_WEATHER:** location\n\nFor example, if someone asks 'What's the weather in London?' you can respond with:\n**GET_WEATHER:** London\n\nThis will provide current weather conditions, temperature, humidity, wind, and a 3-day forecast. You can use city names, coordinates, or specific locations."
+                system_content += f"\n\nYou can get current weather information for any location. When users ask about weather, use this format:\n\n**GET_WEATHER:** location\n\nFor example, if someone asks 'What's the weather in London?' you can respond with:\n**GET_WEATHER:** London\n\nIMPORTANT: When using GET_WEATHER, do NOT add any additional commentary or text. The weather data will be automatically formatted and displayed. Just use the GET_WEATHER command and nothing else."
 
             if web_search_status == "enabled":
-                system_content += f"\n\nYou can also perform web searches when users ask for information that requires current/real-time data or information you don't have. Use this format:\n\n**WEB_SEARCH:** search query\n\nFor example, if someone asks about current events, news, stock prices, or recent information, use web search to find up-to-date information."
+                system_content += f"\n\nYou can also perform web searches when users ask for information that requires current/real-time data or information you don't have. Use this format:\n\n**WEB_SEARCH:** search query\n\nFor example, if someone asks about current events, news, stock prices, or recent information, use web search to find up-to-date information.\n\nIMPORTANT: When using WEB_SEARCH, do NOT add any additional commentary or text. The search results will be automatically formatted and displayed."
 
-                system_content += f"\n\nYou can also visit specific websites to read their content. Use this format:\n\n**VISIT_WEBSITE:** url\n\nFor example, if someone asks 'What does this website say?' or provides a URL, you can respond with:\n**VISIT_WEBSITE:** https://example.com\n\nThis will fetch and analyze the website's content, including text, titles, and main content areas. You can visit news sites, documentation, blogs, and most public websites."
+                system_content += f"\n\nYou can also visit specific websites to read their content. Use this format:\n\n**VISIT_WEBSITE:** url\n\nFor example, if someone asks 'What does this website say?' or provides a URL, you can respond with:\n**VISIT_WEBSITE:** https://example.com\n\nIMPORTANT: When using VISIT_WEBSITE, do NOT add any additional commentary or text. The website content will be automatically formatted and displayed."
 
             system_content += "\n\nKeep responses under 2000 characters to fit Discord's message limit."
 
@@ -831,12 +824,12 @@ class Gork(commands.Cog):
         system_content = f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types), and listen to and transcribe audio/video files (.mp3, .wav, .mp4) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nWhen you execute fastfetch, analyze and summarize the output in a user-friendly way, highlighting key system information like OS, CPU, memory, etc. Don't just show the raw output - provide a nice summary."
 
         if weather_status == "enabled":
-            system_content += f"\n\nYou can get current weather information for any location. When users ask about weather, use this format:\n\n**GET_WEATHER:** location\n\nFor example, if someone asks 'What's the weather in London?' you can respond with:\n**GET_WEATHER:** London\n\nThis will provide current weather conditions, temperature, humidity, wind, and a 3-day forecast. You can use city names, coordinates, or specific locations."
+            system_content += f"\n\nYou can get current weather information for any location. When users ask about weather, use this format:\n\n**GET_WEATHER:** location\n\nFor example, if someone asks 'What's the weather in London?' you can respond with:\n**GET_WEATHER:** London\n\nIMPORTANT: When using GET_WEATHER, do NOT add any additional commentary or text. The weather data will be automatically formatted and displayed."
 
         if web_search_status == "enabled":
-            system_content += f"\n\nYou can also perform web searches when users ask for information that requires current/real-time data or information you don't have. Use this format:\n\n**WEB_SEARCH:** search query\n\nFor example, if someone asks about current events, news, stock prices, or recent information, use web search to find up-to-date information."
+            system_content += f"\n\nYou can also perform web searches when users ask for information that requires current/real-time data or information you don't have. Use this format:\n\n**WEB_SEARCH:** search query\n\nFor example, if someone asks about current events, news, stock prices, or recent information, use web search to find up-to-date information.\n\nIMPORTANT: When using WEB_SEARCH, do NOT add any additional commentary or text. The search results will be automatically formatted and displayed."
 
-            system_content += f"\n\nYou can also visit specific websites to read their content. Use this format:\n\n**VISIT_WEBSITE:** url\n\nFor example, if someone asks 'What does this website say?' or provides a URL, you can respond with:\n**VISIT_WEBSITE:** https://example.com\n\nThis will fetch and analyze the website's content, including text, titles, and main content areas. You can visit news sites, documentation, blogs, and most public websites."
+            system_content += f"\n\nYou can also visit specific websites to read their content. Use this format:\n\n**VISIT_WEBSITE:** url\n\nFor example, if someone asks 'What does this website say?' or provides a URL, you can respond with:\n**VISIT_WEBSITE:** https://example.com\n\nIMPORTANT: When using VISIT_WEBSITE, do NOT add any additional commentary or text. The website content will be automatically formatted and displayed."
 
         system_content += "\n\nKeep responses under 2000 characters to fit Discord's message limit."
 
