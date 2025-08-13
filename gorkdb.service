@@ -1,0 +1,25 @@
+[Unit]
+Description=GorkDB Admin Server for gorkdb.ilikepancakes.gay
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/path/to/neruaibot-main
+ExecStart=/usr/bin/python /path/to/neruaibot-main/db_admin_server.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/path/to/neruaibot-main/data
+ReadWritePaths=/path/to/neruaibot-main/web_admin
+
+[Install]
+WantedBy=multi-user.target
