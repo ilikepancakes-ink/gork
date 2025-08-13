@@ -201,7 +201,7 @@ def main():
             return 1
 
     # Create server with custom domain configuration
-    server = DatabaseAdminServer(port=80, host="0.0.0.0", domain="gorkdb.ilikepancakes.gay")
+    server = DatabaseAdminServer(port=8080, host="0.0.0.0", domain="gorkdb.ilikepancakes.gay")
 
     print("\n🌐 Server Configuration:")
     print(f"   Domain: {server.domain}")
