@@ -65,16 +65,12 @@ class Gork(commands.Cog):
         self.searchapi_key = os.getenv("SEARCHAPI_KEY")
         self.searchapi_url = "https://www.searchapi.io/api/v1/search"
 
-        # WeatherAPI configuration
-        self.weatherapi_key = os.getenv("WEATHERAPI_KEY")
-        self.weatherapi_url = "http://api.weatherapi.com/v1"
+
 
         if not self.openrouter_api_key:
             print("Warning: OPENROUTER_API_KEY not found in environment variables")
         if not self.searchapi_key:
             print("Warning: SEARCHAPI_KEY not found. Web search functionality will be disabled.")
-        if not self.weatherapi_key or self.weatherapi_key == "your_weatherapi_key_here":
-            print("Warning: WEATHERAPI_KEY not found or not configured. Weather functionality will be disabled.")
 
         # Initialize Whisper model for audio transcription
         try:
@@ -403,60 +399,17 @@ class Gork(commands.Cog):
             return f"❌ Error performing web search: {str(e)}"
 
     async def get_weather(self, location: str) -> str:
-        """Get weather information using WeatherAPI"""
-        if not self.weatherapi_key or self.weatherapi_key == "your_weatherapi_key_here":
-            return "❌ Weather functionality is not configured. Please set WEATHERAPI_KEY environment variable."
+        """Get weather information using the Weather cog"""
+        # Get the weather cog
+        weather_cog = self.bot.get_cog('Weather')
+        if weather_cog is None:
+            return "❌ Weather functionality is not available. Weather cog not loaded."
 
+        # Use the weather cog's search_weather method
         try:
-            # Use forecast endpoint for current + forecast data
-            url = f"{self.weatherapi_url}/forecast.json"
-            params = {
-                "key": self.weatherapi_key,
-                "q": location,
-                "days": 3,  # Get 3-day forecast
-                "aqi": "yes",  # Include air quality data
-                "alerts": "yes"  # Include weather alerts
-            }
-
-            async with aiohttp.ClientSession() as session:
-                async with session.get(url, params=params) as response:
-                    if response.status == 200:
-                        data = await response.json()
-                        return await self.format_weather_data(data)
-                    else:
-                        error_data = await response.json()
-                        error_msg = error_data.get('error', {}).get('message', 'Unknown error')
-                        return f"❌ WeatherAPI Error {response.status}: {error_msg}"
-
+            return await weather_cog.search_weather(location)
         except Exception as e:
-            return f"❌ Error fetching weather data: {str(e)}"
-
-    async def format_weather_data(self, data: dict) -> str:
-        """Format weather data into a readable response"""
-        try:
-            current = data["current"]
-            location_info = data["location"]
-            forecast = data["forecast"]["forecastday"]
-
-            # Current weather - more concise format
-            response = f"🌤️ **{location_info['name']}, {location_info['region']}, {location_info['country']}**\n"
-            response += f"🌡️ **{current['temp_c']}°C** ({current['temp_f']}°F) • Feels like {current['feelslike_c']}°C\n"
-            response += f"☁️ {current['condition']['text']}\n"
-            response += f"💨 Wind: {current['wind_kph']} km/h {current['wind_dir']} • 💧 Humidity: {current['humidity']}%\n"
-
-            # Today's forecast
-            if forecast:
-                today = forecast[0]["day"]
-                response += f"🌡️ High/Low: {today['maxtemp_c']}°C / {today['mintemp_c']}°C • 🌧️ Rain: {today['daily_chance_of_rain']}%"
-
-            # Weather alerts (only if present)
-            if "alerts" in data and data["alerts"]["alert"]:
-                response += f"\n⚠️ **Alert:** {data['alerts']['alert'][0]['headline']}"
-
-            return response
-
-        except Exception as e:
-            return f"❌ Error formatting weather data: {str(e)}"
+            return f"❌ Error getting weather data: {str(e)}"
 
     async def visit_website(self, url: str) -> str:
         """Visit a website and extract its content"""
@@ -637,7 +590,7 @@ class Gork(commands.Cog):
                 # Prepare the conversation context
                 safe_commands_list = ', '.join(self.safe_commands.keys())
                 web_search_status = "enabled" if self.searchapi_key else "disabled"
-                weather_status = "enabled" if self.weatherapi_key and self.weatherapi_key != "your_weatherapi_key_here" else "disabled"
+                weather_status = "enabled" if self.bot.get_cog('Weather') is not None else "disabled"
 
                 system_content = f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types), and listen to and transcribe audio/video files (.mp3, .wav, .mp4) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nWhen you execute fastfetch, analyze and summarize the output in a user-friendly way, highlighting key system information like OS, CPU, memory, etc. Don't just show the raw output - provide a nice summary. REMEMBER ONLY RESPOND ONCE TO REQUESTS NO EXCEPTIONS."
 
@@ -853,7 +806,7 @@ class Gork(commands.Cog):
 
         safe_commands_list = ', '.join(self.safe_commands.keys())
         web_search_status = "enabled" if self.searchapi_key else "disabled"
-        weather_status = "enabled" if self.weatherapi_key and self.weatherapi_key != "your_weatherapi_key_here" else "disabled"
+        weather_status = "enabled" if self.bot.get_cog('Weather') is not None else "disabled"
 
         system_content = f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types), and listen to and transcribe audio/video files (.mp3, .wav, .mp4) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nWhen you execute fastfetch, analyze and summarize the output in a user-friendly way, highlighting key system information like OS, CPU, memory, etc. Don't just show the raw output - provide a nice summary."
 
