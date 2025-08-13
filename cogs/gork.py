@@ -617,15 +617,15 @@ class Gork(commands.Cog):
             web_search_status = "enabled" if self.searchapi_key else "disabled"
             weather_status = "enabled" if self.weatherapi_key and self.weatherapi_key != "your_weatherapi_key_here" else "disabled"
 
-            system_content = f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types), and listen to and transcribe audio/video files (.mp3, .wav, .mp4) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nWhen you execute fastfetch, analyze and summarize the output in a user-friendly way, highlighting key system information like OS, CPU, memory, etc. Don't just show the raw output - provide a nice summary. REMEMBER ONLY RESPOND ONCE TO REQUESTS NO EXEPTIONS."
+            system_content = f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images, read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types), and listen to and transcribe audio/video files (.mp3, .wav, .mp4) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nWhen you execute fastfetch, analyze and summarize the output in a user-friendly way, highlighting key system information like OS, CPU, memory, etc. Don't just show the raw output - provide a nice summary. REMEMBER ONLY RESPOND ONCE TO REQUESTS NO EXCEPTIONS."
 
             if weather_status == "enabled":
-                system_content += f"\n\nYou can get current weather information for any location. When users ask about weather, use this format:\n\n**GET_WEATHER:** location\n\nFor example, if someone asks 'What's the weather in London?' you can respond with:\n**GET_WEATHER:** London\n\nIMPORTANT: When using GET_WEATHER, do NOT add any additional commentary or text. The weather data will be automatically formatted and displayed. Just use the GET_WEATHER command and nothing else.if you think you cant access it dont say anthing at all. REMEMBER ONLY RESPOND ONCE TO REQUESTS NO EXEPTIONS."
+                system_content += f"\n\nYou can get current weather information for any location. When users ask about weather, use this format:\n\n**GET_WEATHER:** location\n\nFor example, if someone asks 'What's the weather in London?' you can respond with:\n**GET_WEATHER:** London\n\nIMPORTANT: When using GET_WEATHER, do NOT add any additional commentary or text. The weather data will be automatically formatted and displayed. Just use the GET_WEATHER command and nothing else. If you think you can't access it, don't say anything at all. REMEMBER ONLY RESPOND ONCE TO REQUESTS NO EXCEPTIONS."
 
             if web_search_status == "enabled":
-                system_content += f"\n\nYou can also perform web searches when users ask for information that requires current/real-time data or information you don't have. Use this format:\n\n**WEB_SEARCH:** search query\n\nFor example, if someone asks about current events, news, stock prices, or recent information, use web search to find up-to-date information.\n\nIMPORTANT: When using WEB_SEARCH, do NOT add any additional commentary or text. The search results will be automatically formatted and displayed. REMEMBER ONLY RESPOND ONCE TO REQUESTS NO EXEPTIONS."
+                system_content += f"\n\nYou can also perform web searches when users ask for information that requires current/real-time data or information you don't have. Use this format:\n\n**WEB_SEARCH:** search query\n\nFor example, if someone asks about current events, news, stock prices, or recent information, use web search to find up-to-date information.\n\nIMPORTANT: When using WEB_SEARCH, do NOT add any additional commentary or text. The search results will be automatically formatted and displayed. REMEMBER ONLY RESPOND ONCE TO REQUESTS NO EXCEPTIONS."
 
-                system_content += f"\n\nYou can also visit specific websites to read their content. Use this format:\n\n**VISIT_WEBSITE:** url\n\nFor example, if someone asks 'What does this website say?' or provides a URL, you can respond with:\n**VISIT_WEBSITE:** https://example.com\n\nIMPORTANT: When using VISIT_WEBSITE, do NOT add any additional commentary or text. The website content will be automatically formatted and displayed. REMEMBER ONLY RESPOND ONCE TO REQUESTS NO EXEPTIONS."
+                system_content += f"\n\nYou can also visit specific websites to read their content. Use this format:\n\n**VISIT_WEBSITE:** url\n\nFor example, if someone asks 'What does this website say?' or provides a URL, you can respond with:\n**VISIT_WEBSITE:** https://example.com\n\nIMPORTANT: When using VISIT_WEBSITE, do NOT add any additional commentary or text. The website content will be automatically formatted and displayed. REMEMBER ONLY RESPOND ONCE TO REQUESTS NO EXCEPTIONS."
 
             system_content += "\n\nKeep responses under 2000 characters to fit Discord's message limit."
 
@@ -735,10 +735,10 @@ class Gork(commands.Cog):
 
                             # Get AI summary
                             summary_response = await self.call_ai(summary_messages, max_tokens=800)
-                            ai_response = ai_response.replace(command_line, summary_response)
+                            ai_response = ai_response.replace(command_line, summary_response, 1)
                         else:
-                            # Replace the command instruction with the output
-                            ai_response = ai_response.replace(command_line, command_output)
+                            # Replace only the specific command instruction line with the output
+                            ai_response = ai_response.replace(command_line, command_output, 1)
 
                 elif "**GET_WEATHER:**" in ai_response:
                     # Extract location from response
@@ -756,8 +756,8 @@ class Gork(commands.Cog):
                         # Get weather data
                         weather_results = await self.get_weather(location)
 
-                        # Replace the weather instruction with the results
-                        ai_response = ai_response.replace(weather_line, weather_results)
+                        # Replace only the specific weather instruction line with the results
+                        ai_response = ai_response.replace(weather_line, weather_results, 1)
 
                 elif "**WEB_SEARCH:**" in ai_response:
                     # Extract search query from response
@@ -775,8 +775,8 @@ class Gork(commands.Cog):
                         # Perform web search
                         search_results = await self.web_search(search_query)
 
-                        # Replace the search instruction with the results
-                        ai_response = ai_response.replace(search_line, search_results)
+                        # Replace only the specific search instruction line with the results
+                        ai_response = ai_response.replace(search_line, search_results, 1)
 
                 elif "**VISIT_WEBSITE:**" in ai_response:
                     # Extract website URL from response
@@ -794,8 +794,8 @@ class Gork(commands.Cog):
                         # Visit the website
                         website_content = await self.visit_website(website_url)
 
-                        # Replace the visit instruction with the content
-                        ai_response = ai_response.replace(visit_line, website_content)
+                        # Replace only the specific visit instruction line with the content
+                        ai_response = ai_response.replace(visit_line, website_content, 1)
 
                 # Split response if it's too long for Discord
                 if len(ai_response) > 2000:
@@ -879,10 +879,10 @@ class Gork(commands.Cog):
 
                     # Get AI summary
                     summary_response = await self.call_ai(summary_messages, max_tokens=800)
-                    ai_response = ai_response.replace(command_line, summary_response)
+                    ai_response = ai_response.replace(command_line, summary_response, 1)
                 else:
-                    # Replace the command instruction with the output
-                    ai_response = ai_response.replace(command_line, command_output)
+                    # Replace only the specific command instruction line with the output
+                    ai_response = ai_response.replace(command_line, command_output, 1)
 
         elif "**GET_WEATHER:**" in ai_response:
             # Extract location from response
@@ -900,8 +900,8 @@ class Gork(commands.Cog):
                 # Get weather data
                 weather_results = await self.get_weather(location)
 
-                # Replace the weather instruction with the results
-                ai_response = ai_response.replace(weather_line, weather_results)
+                # Replace only the specific weather instruction line with the results
+                ai_response = ai_response.replace(weather_line, weather_results, 1)
 
         elif "**WEB_SEARCH:**" in ai_response:
             # Extract search query from response
@@ -919,8 +919,8 @@ class Gork(commands.Cog):
                 # Perform web search
                 search_results = await self.web_search(search_query)
 
-                # Replace the search instruction with the results
-                ai_response = ai_response.replace(search_line, search_results)
+                # Replace only the specific search instruction line with the results
+                ai_response = ai_response.replace(search_line, search_results, 1)
 
         elif "**VISIT_WEBSITE:**" in ai_response:
             # Extract website URL from response
@@ -938,8 +938,8 @@ class Gork(commands.Cog):
                 # Visit the website
                 website_content = await self.visit_website(website_url)
 
-                # Replace the visit instruction with the content
-                ai_response = ai_response.replace(visit_line, website_content)
+                # Replace only the specific visit instruction line with the content
+                ai_response = ai_response.replace(visit_line, website_content, 1)
 
         # Split response if it's too long for Discord
         if len(ai_response) > 2000:
