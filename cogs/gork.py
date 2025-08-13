@@ -32,6 +32,9 @@ class Gork(commands.Cog):
         # Track processing messages to prevent duplicates
         self.processing_messages = set()
 
+        # Track recent bot messages to detect and delete duplicates
+        self.recent_bot_messages = {}  # {channel_id: [(message_id, content_hash, timestamp), ...]}
+
         # Import time for cleanup
         import time
         self.last_cleanup = time.time()
@@ -79,6 +82,66 @@ class Gork(commands.Cog):
         except Exception as e:
             print(f"Warning: Failed to load Whisper model: {e}")
             self.whisper_model = None
+
+    async def check_and_delete_duplicate(self, message, content: str):
+        """Check if this is a duplicate message and delete it if so"""
+        import hashlib
+        import time
+
+        channel_id = message.channel.id
+        content_hash = hashlib.md5(content.encode()).hexdigest()
+        current_time = time.time()
+
+        # Clean up old messages (older than 30 seconds)
+        if channel_id in self.recent_bot_messages:
+            self.recent_bot_messages[channel_id] = [
+                (msg_id, msg_hash, timestamp) for msg_id, msg_hash, timestamp in self.recent_bot_messages[channel_id]
+                if current_time - timestamp < 30
+            ]
+
+        # Check for duplicates in the last 10 seconds
+        if channel_id in self.recent_bot_messages:
+            for msg_id, msg_hash, timestamp in self.recent_bot_messages[channel_id]:
+                if msg_hash == content_hash and current_time - timestamp < 10:
+                    # This is a duplicate, delete it
+                    try:
+                        await message.delete()
+                        print(f"Deleted duplicate message in channel {channel_id}")
+                        return True
+                    except Exception as e:
+                        print(f"Failed to delete duplicate message: {e}")
+                        return False
+
+        # Add this message to recent messages
+        if channel_id not in self.recent_bot_messages:
+            self.recent_bot_messages[channel_id] = []
+
+        self.recent_bot_messages[channel_id].append((message.id, content_hash, current_time))
+
+        # Keep only the last 5 messages per channel
+        if len(self.recent_bot_messages[channel_id]) > 5:
+            self.recent_bot_messages[channel_id] = self.recent_bot_messages[channel_id][-5:]
+
+        return False
+
+    async def track_sent_message(self, message, content: str):
+        """Track a message we just sent to detect future duplicates"""
+        import hashlib
+        import time
+
+        channel_id = message.channel.id
+        content_hash = hashlib.md5(content.encode()).hexdigest()
+        current_time = time.time()
+
+        # Add this message to recent messages
+        if channel_id not in self.recent_bot_messages:
+            self.recent_bot_messages[channel_id] = []
+
+        self.recent_bot_messages[channel_id].append((message.id, content_hash, current_time))
+
+        # Keep only the last 5 messages per channel
+        if len(self.recent_bot_messages[channel_id]) > 5:
+            self.recent_bot_messages[channel_id] = self.recent_bot_messages[channel_id][-5:]
 
     async def transcribe_audio(self, audio_data: bytes, filename: str) -> str:
         """Transcribe audio data using Whisper"""
@@ -560,8 +623,10 @@ class Gork(commands.Cog):
     @commands.Cog.listener()
     async def on_message(self, message):
         """Listen for messages that mention the bot"""
-        # Don't respond to bot's own messages
+        # Check if this is our bot's message and if it's a duplicate
         if message.author == self.bot.user:
+            # Check for duplicate and delete if found
+            await self.check_and_delete_duplicate(message, message.content)
             return
 
         # Don't respond to other bots
@@ -777,9 +842,13 @@ class Gork(commands.Cog):
                         # Split into chunks of 2000 characters
                         chunks = [ai_response[i:i+2000] for i in range(0, len(ai_response), 2000)]
                         for chunk in chunks:
-                            await message.reply(chunk)
+                            sent_message = await message.reply(chunk)
+                            # Track this message to prevent duplicates
+                            await self.track_sent_message(sent_message, chunk)
                     else:
-                        await message.reply(ai_response)
+                        sent_message = await message.reply(ai_response)
+                        # Track this message to prevent duplicates
+                        await self.track_sent_message(sent_message, ai_response)
 
             finally:
                 # Remove from processing set
@@ -932,11 +1001,14 @@ class Gork(commands.Cog):
         if len(ai_response) > 2000:
             # Split into chunks of 2000 characters
             chunks = [ai_response[i:i+2000] for i in range(0, len(ai_response), 2000)]
-            await interaction.followup.send(chunks[0])
+            sent_message = await interaction.followup.send(chunks[0])
+            await self.track_sent_message(sent_message, chunks[0])
             for chunk in chunks[1:]:
-                await interaction.followup.send(chunk)
+                sent_message = await interaction.followup.send(chunk)
+                await self.track_sent_message(sent_message, chunk)
         else:
-            await interaction.followup.send(ai_response)
+            sent_message = await interaction.followup.send(ai_response)
+            await self.track_sent_message(sent_message, ai_response)
 
     @app_commands.command(name="gork_status", description="Check Gork AI status")
     @app_commands.allowed_installs(guilds=True, users=True)
