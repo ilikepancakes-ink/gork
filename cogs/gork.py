@@ -20,6 +20,8 @@ from pydub import AudioSegment
 from moviepy.editor import VideoFileClip
 from bs4 import BeautifulSoup
 import re
+import time
+from datetime import datetime
 
 class Gork(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -38,6 +40,9 @@ class Gork(commands.Cog):
         # Import time for cleanup
         import time
         self.last_cleanup = time.time()
+
+        # Get reference to message logger cog for database logging
+        self.message_logger = None
 
         # Whitelist of safe commands that can be executed
         self.safe_commands = {
@@ -82,6 +87,12 @@ class Gork(commands.Cog):
         except Exception as e:
             print(f"Warning: Failed to load Whisper model: {e}")
             self.whisper_model = None
+
+    def get_message_logger(self):
+        """Get the message logger cog instance"""
+        if self.message_logger is None:
+            self.message_logger = self.bot.get_cog('MessageLogger')
+        return self.message_logger
 
     async def check_and_delete_duplicate(self, message, content: str):
         """Check if this is a duplicate message and delete it if so"""
@@ -648,7 +659,15 @@ class Gork(commands.Cog):
             # Add to processing set
             self.processing_messages.add(message_id)
 
+            # Log the user message to database
+            message_logger = self.get_message_logger()
+            if message_logger:
+                asyncio.create_task(message_logger.log_user_message(message))
+
             try:
+                # Track processing start time for performance metrics
+                processing_start_time = time.time()
+
                 # Determine context for system message
                 context_type = "DM" if is_dm else "Discord server"
 
@@ -837,18 +856,33 @@ class Gork(commands.Cog):
                             # Replace only the specific visit instruction line with the content
                             ai_response = ai_response.replace(visit_line, website_content, 1)
 
+                    # Calculate processing time
+                    processing_time_ms = int((time.time() - processing_start_time) * 1000)
+
                     # Split response if it's too long for Discord
                     if len(ai_response) > 2000:
                         # Split into chunks of 2000 characters
                         chunks = [ai_response[i:i+2000] for i in range(0, len(ai_response), 2000)]
-                        for chunk in chunks:
+                        total_chunks = len(chunks)
+                        for i, chunk in enumerate(chunks, 1):
                             sent_message = await message.reply(chunk)
                             # Track this message to prevent duplicates
                             await self.track_sent_message(sent_message, chunk)
+                            # Log bot response to database
+                            if message_logger:
+                                asyncio.create_task(message_logger.log_bot_response(
+                                    message, sent_message, chunk, processing_time_ms,
+                                    self.model, (total_chunks, i)
+                                ))
                     else:
                         sent_message = await message.reply(ai_response)
                         # Track this message to prevent duplicates
                         await self.track_sent_message(sent_message, ai_response)
+                        # Log bot response to database
+                        if message_logger:
+                            asyncio.create_task(message_logger.log_bot_response(
+                                message, sent_message, ai_response, processing_time_ms, self.model
+                            ))
 
             finally:
                 # Remove from processing set
@@ -868,6 +902,15 @@ class Gork(commands.Cog):
     async def gork_command(self, interaction: discord.Interaction, message: str):
         """Slash command to chat with Gork"""
         await interaction.response.defer()
+
+        # Track processing start time for performance metrics
+        processing_start_time = time.time()
+
+        # Log the user message to database (for slash commands)
+        message_logger = self.get_message_logger()
+        if message_logger:
+            # Create a pseudo-message object for slash commands
+            asyncio.create_task(message_logger.log_user_message_from_interaction(interaction, message))
 
         # Determine context for system message
         is_dm = interaction.guild is None
@@ -997,18 +1040,39 @@ class Gork(commands.Cog):
                 # Replace only the specific visit instruction line with the content
                 ai_response = ai_response.replace(visit_line, website_content, 1)
 
+        # Calculate processing time
+        processing_time_ms = int((time.time() - processing_start_time) * 1000)
+
         # Split response if it's too long for Discord
         if len(ai_response) > 2000:
             # Split into chunks of 2000 characters
             chunks = [ai_response[i:i+2000] for i in range(0, len(ai_response), 2000)]
+            total_chunks = len(chunks)
             sent_message = await interaction.followup.send(chunks[0])
             await self.track_sent_message(sent_message, chunks[0])
-            for chunk in chunks[1:]:
+            # Log first chunk
+            if message_logger:
+                asyncio.create_task(message_logger.log_bot_response_from_interaction(
+                    interaction, sent_message, chunks[0], processing_time_ms,
+                    self.model, (total_chunks, 1)
+                ))
+            for i, chunk in enumerate(chunks[1:], 2):
                 sent_message = await interaction.followup.send(chunk)
                 await self.track_sent_message(sent_message, chunk)
+                # Log additional chunks
+                if message_logger:
+                    asyncio.create_task(message_logger.log_bot_response_from_interaction(
+                        interaction, sent_message, chunk, processing_time_ms,
+                        self.model, (total_chunks, i)
+                    ))
         else:
             sent_message = await interaction.followup.send(ai_response)
             await self.track_sent_message(sent_message, ai_response)
+            # Log single response
+            if message_logger:
+                asyncio.create_task(message_logger.log_bot_response_from_interaction(
+                    interaction, sent_message, ai_response, processing_time_ms, self.model
+                ))
 
     @app_commands.command(name="gork_status", description="Check Gork AI status")
     @app_commands.allowed_installs(guilds=True, users=True)
