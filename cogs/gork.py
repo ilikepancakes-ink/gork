@@ -31,20 +31,14 @@ class Gork(commands.Cog):
         self.openrouter_url = "https://openrouter.ai/api/v1/chat/completions"
         self.model = "google/gemini-2.5-flash"
 
-        # Track processing messages to prevent duplicates
         self.processing_messages = set()
 
-        # Track recent bot messages to detect and delete duplicates
-        self.recent_bot_messages = {}  # {channel_id: [(message_id, content_hash, timestamp), ...]}
+        self.recent_bot_messages = {}
 
-        # Import time for cleanup
         import time
         self.last_cleanup = time.time()
 
-        # Get reference to message logger cog for database logging
         self.message_logger = None
-
-        # Whitelist of safe commands that can be executed
         self.safe_commands = {
             'fastfetch': 'fastfetch --stdout',
             'whoami': 'whoami',
@@ -80,7 +74,6 @@ class Gork(commands.Cog):
         if not self.searchapi_key:
             print("Warning: SEARCHAPI_KEY not found. Web search functionality will be disabled.")
 
-        # Initialize Whisper model for audio transcription
         try:
             self.whisper_model = whisper.load_model("base")
             print("Whisper model loaded successfully for audio transcription")
@@ -89,13 +82,11 @@ class Gork(commands.Cog):
             self.whisper_model = None
 
     def get_message_logger(self):
-        """Get the message logger cog instance"""
         if self.message_logger is None:
             self.message_logger = self.bot.get_cog('MessageLogger')
         return self.message_logger
 
     async def check_and_delete_duplicate(self, message, content: str):
-        """Check if this is a duplicate message and delete it if so"""
         import hashlib
         import time
 
@@ -103,18 +94,15 @@ class Gork(commands.Cog):
         content_hash = hashlib.md5(content.encode()).hexdigest()
         current_time = time.time()
 
-        # Clean up old messages (older than 30 seconds)
         if channel_id in self.recent_bot_messages:
             self.recent_bot_messages[channel_id] = [
                 (msg_id, msg_hash, timestamp) for msg_id, msg_hash, timestamp in self.recent_bot_messages[channel_id]
                 if current_time - timestamp < 30
             ]
 
-        # Check for duplicates in the last 10 seconds
         if channel_id in self.recent_bot_messages:
             for msg_id, msg_hash, timestamp in self.recent_bot_messages[channel_id]:
                 if msg_hash == content_hash and current_time - timestamp < 10:
-                    # This is a duplicate, delete it
                     try:
                         await message.delete()
                         print(f"Deleted duplicate message in channel {channel_id}")
@@ -123,20 +111,17 @@ class Gork(commands.Cog):
                         print(f"Failed to delete duplicate message: {e}")
                         return False
 
-        # Add this message to recent messages
         if channel_id not in self.recent_bot_messages:
             self.recent_bot_messages[channel_id] = []
 
         self.recent_bot_messages[channel_id].append((message.id, content_hash, current_time))
 
-        # Keep only the last 5 messages per channel
         if len(self.recent_bot_messages[channel_id]) > 5:
             self.recent_bot_messages[channel_id] = self.recent_bot_messages[channel_id][-5:]
 
         return False
 
     async def track_sent_message(self, message, content: str):
-        """Track a message we just sent to detect future duplicates"""
         import hashlib
         import time
 
@@ -144,13 +129,11 @@ class Gork(commands.Cog):
         content_hash = hashlib.md5(content.encode()).hexdigest()
         current_time = time.time()
 
-        # Add this message to recent messages
         if channel_id not in self.recent_bot_messages:
             self.recent_bot_messages[channel_id] = []
 
         self.recent_bot_messages[channel_id].append((message.id, content_hash, current_time))
 
-        # Keep only the last 5 messages per channel
         if len(self.recent_bot_messages[channel_id]) > 5:
             self.recent_bot_messages[channel_id] = self.recent_bot_messages[channel_id][-5:]
 

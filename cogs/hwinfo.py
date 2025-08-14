@@ -1,4 +1,3 @@
-# pylint: disable=import-error
 import platform
 import psutil
 import discord
@@ -22,22 +21,20 @@ class HwInfo(commands.Cog):
 
     @commands.hybrid_group(name="system", description="System related commands.")
     async def system(self, ctx: commands.Context):
-        """System related commands."""
         await ctx.send_help(ctx.command)
 
     @system.command(name="check", description="Shows detailed system and bot information.")
     async def systemcheck(self, ctx: commands.Context):
-        """Check the bot and system status."""
-        if ctx.interaction:  # Check if it's an application command
+        if ctx.interaction:
             await ctx.interaction.response.defer(thinking=True)
         else:
-            await ctx.defer()  # For prefix commands
+            await ctx.defer()
         try:
-            embed = await self._system_check_logic(ctx)  # Pass ctx
+            embed = await self._system_check_logic(ctx)
             if ctx.interaction:
                 await ctx.interaction.followup.send(embed=embed)
             else:
-                await ctx.send(embed=embed)  # For prefix commands
+                await ctx.send(embed=embed)
         except Exception as e:
             print(f"Error in systemcheck command: {e}")
             if ctx.interaction:
@@ -46,7 +43,6 @@ class HwInfo(commands.Cog):
                 await ctx.send(f"An error occurred while checking system status: {e}")
 
     async def _system_check_logic(self, context_or_interaction):
-        """Return detailed bot and system information as a Discord embed."""
         bot_user = self.bot.user
         guild_count = len(self.bot.guilds)
 
@@ -193,7 +189,6 @@ class HwInfo(commands.Cog):
         return embed
 
     def _get_motherboard_info(self):
-        """Get motherboard information based on the operating system."""
         system = platform.system()
         try:
             if system == "Windows":
@@ -222,7 +217,6 @@ class HwInfo(commands.Cog):
         description="Runs the 'sensors' command and sends its output to chat.",
     )
     async def temps(self, ctx: commands.Context):
-        """Executes the sensors command and returns the output."""
         try:
             process = await asyncio.create_subprocess_exec(
                 "sensors",

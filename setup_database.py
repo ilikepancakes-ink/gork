@@ -1,30 +1,22 @@
 #!/usr/bin/env python3
-"""
-Setup script for the message logging database
-"""
 import os
 import asyncio
 from utils.database import MessageDatabase
 
 async def setup_database():
-    """Initialize the database and create necessary directories"""
     print("🔧 Setting up message logging database...")
-    
-    # Create data directory if it doesn't exist
+
     os.makedirs("data", exist_ok=True)
     print("✅ Created data directory")
-    
-    # Initialize the database
+
     db = MessageDatabase("data/bot_messages.db")
     await db.initialize()
     
     print("✅ Database setup complete!")
     print(f"📁 Database location: {os.path.abspath(db.db_path)}")
-    
-    # Test the database with some sample operations
+
     print("\n🧪 Testing database operations...")
-    
-    # Test getting stats (should be empty initially)
+
     stats = await db.get_conversation_stats()
     print(f"📊 Initial stats: {stats}")
     

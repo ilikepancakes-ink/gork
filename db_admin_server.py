@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""
-Database Admin Server
-Hosts a PHP server for database administration with login functionality
-"""
 import os
 import sys
 import subprocess
@@ -20,13 +16,11 @@ class DatabaseAdminServer:
         self.php_process = None
         self.server_root = Path(__file__).parent / "web_admin"
 
-        # Load environment variables
         load_dotenv("ai.env")
         self.db_user = os.getenv("DB_USER", "admin")
         self.db_pass = os.getenv("DB_PASS", "admin123")
         
     def check_php_installed(self):
-        """Check if PHP is installed and available"""
         try:
             result = subprocess.run(["php", "--version"], 
                                   capture_output=True, text=True, check=True)
@@ -38,9 +32,8 @@ class DatabaseAdminServer:
             return False
     
     def find_available_port(self, start_port=80):
-        """Find an available port starting from start_port"""
         port = start_port
-        while port < start_port + 100:  # Try 100 ports
+        while port < start_port + 100:
             try:
                 with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
                     s.bind((self.host, port))
@@ -50,27 +43,20 @@ class DatabaseAdminServer:
         raise RuntimeError("Could not find an available port")
     
     def setup_web_files(self):
-        """Create the web administration files"""
-        # Create web_admin directory
         self.server_root.mkdir(exist_ok=True)
-        
-        # Create database path for web access
+
         db_path = Path("data/bot_messages.db").absolute()
         
         print(f"🔧 Setting up web files in {self.server_root}")
         print(f"📁 Database path: {db_path}")
         
-        # Create config file with database path and credentials
-        # Use forward slashes for Linux/Unix paths (Arch Linux)
         db_path_php = str(db_path).replace('\\', '/')
 
         config_content = f"""<?php
-// Database configuration
 define('DB_PATH', '{db_path_php}');
 define('ADMIN_USER', '{self.db_user}');
 define('ADMIN_PASS', '{self.db_pass}');
 
-// Session configuration
 session_start();
 
 function isLoggedIn() {{
@@ -92,14 +78,12 @@ function requireLogin() {{
         return True
     
     def start_server(self):
-        """Start the PHP development server"""
         if not self.check_php_installed():
             return False
         
         if not self.setup_web_files():
             return False
-        
-        # Find available port
+
         try:
             self.port = self.find_available_port(self.port)
         except RuntimeError as e:
@@ -110,7 +94,6 @@ function requireLogin() {{
         print(f"📁 Server root: {self.server_root}")
         
         try:
-            # Start PHP development server
             cmd = [
                 "php", "-S", f"{self.host}:{self.port}",
                 "-t", str(self.server_root)
@@ -122,11 +105,9 @@ function requireLogin() {{
                 stderr=subprocess.PIPE,
                 text=True
             )
-            
-            # Wait a moment for server to start
+
             time.sleep(2)
-            
-            # Check if server started successfully
+
             if self.php_process.poll() is None:
                 url = f"http://{self.domain}"
                 if self.port != 80:
@@ -141,7 +122,6 @@ function requireLogin() {{
                 print("\n🔧 Press Ctrl+C to stop the server")
                 print(f"\n⚠️  Note: Make sure {self.domain} points to this server's IP address")
 
-                # Don't auto-open browser for custom domain
                 print("🌐 Navigate to the URL manually in your browser")
                 
                 return True
@@ -157,7 +137,6 @@ function requireLogin() {{
             return False
     
     def stop_server(self):
-        """Stop the PHP server"""
         if self.php_process and self.php_process.poll() is None:
             print("\n🛑 Stopping server...")
             self.php_process.terminate()
@@ -171,10 +150,8 @@ function requireLogin() {{
                 print("✅ Server force stopped")
     
     def run(self):
-        """Run the server with proper cleanup"""
         try:
             if self.start_server():
-                # Keep server running
                 while True:
                     if self.php_process.poll() is not None:
                         print("❌ Server process died unexpectedly")
@@ -186,11 +163,9 @@ function requireLogin() {{
             self.stop_server()
 
 def main():
-    """Main entry point"""
     print("🔧 Database Admin Server - gorkdb.ilikepancakes.gay")
     print("=" * 60)
 
-    # Check if database exists
     db_path = Path("data/bot_messages.db")
     if not db_path.exists():
         print("⚠️  Database not found. Running setup...")
@@ -200,7 +175,6 @@ def main():
             print("❌ Failed to setup database. Please run setup_database.py first.")
             return 1
 
-    # Create server with custom domain configuration
     server = DatabaseAdminServer(port=8080, host="0.0.0.0", domain="gorkdb.ilikepancakes.gay")
 
     print("\n🌐 Server Configuration:")
