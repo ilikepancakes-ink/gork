@@ -298,5 +298,160 @@ class MessageLogger(commands.Cog):
         except Exception as e:
             await ctx.send(f"❌ Error retrieving database statistics: {str(e)}")
 
+    @app_commands.command(name="logs", description="Get conversation logs for a user (Admin only)")
+    @app_commands.describe(user="The user to get logs for")
+    async def logs_slash(self, interaction: discord.Interaction, user: discord.User):
+        """Slash command to get user logs (Admin only)"""
+        # Check if user has the specific user ID
+        if interaction.user.id != 1141746562922459136:
+            await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+            return
+
+        await interaction.response.defer(ephemeral=True)
+
+        try:
+            # Get conversation context for the user
+            conversation_context = await self.db.get_conversation_context(str(user.id), limit=100)
+
+            if not conversation_context:
+                await interaction.followup.send(f"📭 No conversation logs found for {user.mention} ({user.name})", ephemeral=True)
+                return
+
+            # Create DM channel with the admin
+            try:
+                dm_channel = await interaction.user.create_dm()
+            except:
+                await interaction.followup.send("❌ Could not create DM channel. Please enable DMs from server members.", ephemeral=True)
+                return
+
+            # Format the logs
+            log_content = f"📋 **Conversation Logs for {user.name} ({user.id})**\n"
+            log_content += f"Total messages: {len(conversation_context)}\n"
+            log_content += "=" * 50 + "\n\n"
+
+            current_chunk = log_content
+            chunk_count = 1
+
+            for i, msg in enumerate(conversation_context, 1):
+                role = msg["role"]
+                content = msg["content"]
+                timestamp = msg["timestamp"]
+
+                if role == "user":
+                    has_attachments = msg.get("has_attachments", False)
+                    attachment_note = " 📎" if has_attachments else ""
+                    message_line = f"**{i}. 👤 User{attachment_note}** ({timestamp}):\n{content}\n\n"
+                else:
+                    model = msg.get("model_used", "unknown")
+                    message_line = f"**{i}. 🤖 Bot** ({model}) ({timestamp}):\n{content}\n\n"
+
+                # Check if adding this message would exceed Discord's 2000 character limit
+                if len(current_chunk + message_line) > 1900:  # Leave some buffer
+                    # Send current chunk
+                    try:
+                        await dm_channel.send(f"```\n{current_chunk}\n```")
+                    except Exception as e:
+                        await interaction.followup.send(f"❌ Error sending DM chunk {chunk_count}: {str(e)}", ephemeral=True)
+                        return
+
+                    # Start new chunk
+                    chunk_count += 1
+                    current_chunk = f"📋 **Logs Continued (Part {chunk_count})**\n\n" + message_line
+                else:
+                    current_chunk += message_line
+
+            # Send final chunk
+            if current_chunk.strip():
+                try:
+                    await dm_channel.send(f"```\n{current_chunk}\n```")
+                except Exception as e:
+                    await interaction.followup.send(f"❌ Error sending final DM chunk: {str(e)}", ephemeral=True)
+                    return
+
+            # Send completion message
+            await dm_channel.send(f"✅ **Log Export Complete**\nTotal messages: {len(conversation_context)}\nSent in {chunk_count} parts")
+            await interaction.followup.send(f"✅ Conversation logs for {user.mention} have been sent to your DMs!", ephemeral=True)
+
+        except Exception as e:
+            await interaction.followup.send(f"❌ Error retrieving logs: {str(e)}", ephemeral=True)
+
+    @commands.command(name="logs", hidden=True)
+    async def logs_command(self, ctx, user: discord.User = None):
+        """Regular command to get user logs (Admin only)"""
+        # Check if user has the specific user ID
+        if ctx.author.id != 1141746562922459136:
+            await ctx.send("❌ You don't have permission to use this command.")
+            return
+
+        if user is None:
+            await ctx.send("❌ Please specify a user. Usage: `!logs @user`")
+            return
+
+        try:
+            # Get conversation context for the user
+            conversation_context = await self.db.get_conversation_context(str(user.id), limit=100)
+
+            if not conversation_context:
+                await ctx.send(f"📭 No conversation logs found for {user.mention} ({user.name})")
+                return
+
+            # Create DM channel with the admin
+            try:
+                dm_channel = await ctx.author.create_dm()
+            except:
+                await ctx.send("❌ Could not create DM channel. Please enable DMs from server members.")
+                return
+
+            # Format the logs (same logic as slash command)
+            log_content = f"📋 **Conversation Logs for {user.name} ({user.id})**\n"
+            log_content += f"Total messages: {len(conversation_context)}\n"
+            log_content += "=" * 50 + "\n\n"
+
+            current_chunk = log_content
+            chunk_count = 1
+
+            for i, msg in enumerate(conversation_context, 1):
+                role = msg["role"]
+                content = msg["content"]
+                timestamp = msg["timestamp"]
+
+                if role == "user":
+                    has_attachments = msg.get("has_attachments", False)
+                    attachment_note = " 📎" if has_attachments else ""
+                    message_line = f"**{i}. 👤 User{attachment_note}** ({timestamp}):\n{content}\n\n"
+                else:
+                    model = msg.get("model_used", "unknown")
+                    message_line = f"**{i}. 🤖 Bot** ({model}) ({timestamp}):\n{content}\n\n"
+
+                # Check if adding this message would exceed Discord's 2000 character limit
+                if len(current_chunk + message_line) > 1900:  # Leave some buffer
+                    # Send current chunk
+                    try:
+                        await dm_channel.send(f"```\n{current_chunk}\n```")
+                    except Exception as e:
+                        await ctx.send(f"❌ Error sending DM chunk {chunk_count}: {str(e)}")
+                        return
+
+                    # Start new chunk
+                    chunk_count += 1
+                    current_chunk = f"📋 **Logs Continued (Part {chunk_count})**\n\n" + message_line
+                else:
+                    current_chunk += message_line
+
+            # Send final chunk
+            if current_chunk.strip():
+                try:
+                    await dm_channel.send(f"```\n{current_chunk}\n```")
+                except Exception as e:
+                    await ctx.send(f"❌ Error sending final DM chunk: {str(e)}")
+                    return
+
+            # Send completion message
+            await dm_channel.send(f"✅ **Log Export Complete**\nTotal messages: {len(conversation_context)}\nSent in {chunk_count} parts")
+            await ctx.send(f"✅ Conversation logs for {user.mention} have been sent to your DMs!")
+
+        except Exception as e:
+            await ctx.send(f"❌ Error retrieving logs: {str(e)}")
+
 async def setup(bot: commands.Bot):
     await bot.add_cog(MessageLogger(bot))
