@@ -154,39 +154,56 @@ class Update(commands.Cog):
             # Get list of loaded cogs
             loaded_cogs = list(self.bot.cogs.keys())
             
+            # Create a mapping of cog names to their actual file names
+            cog_file_mapping = {
+                'MessageLogger': 'message_logger',
+                'Gork': 'gork',
+                'Status': 'status',
+                'Weather': 'weather',
+                'HwInfo': 'hwinfo',
+                'Update': 'update'
+            }
+
             for cog_name in loaded_cogs:
                 try:
                     # Skip reloading the update cog itself to avoid issues
                     if cog_name.lower() == 'update':
                         continue
-                        
-                    # Find the extension name (assuming cogs are in cogs/ directory)
-                    extension_name = f"cogs.{cog_name.lower()}"
-                    
+
+                    # Find the extension name using the mapping or fallback to lowercase
+                    file_name = cog_file_mapping.get(cog_name, cog_name.lower())
+                    extension_name = f"cogs.{file_name}"
+
                     # Reload the extension
                     await self.bot.reload_extension(extension_name)
                     results.append(f"✅ Reloaded {cog_name}")
-                    
+
                 except Exception as e:
                     failed_cogs.append(f"❌ Failed to reload {cog_name}: {str(e)}")
             
             # Try to load any new cogs that might have been added
             cogs_dir = "cogs"
             if os.path.exists(cogs_dir):
+                # Create reverse mapping from file names to cog names
+                file_to_cog_mapping = {v: k for k, v in cog_file_mapping.items()}
+
                 for filename in os.listdir(cogs_dir):
                     if filename.endswith('.py') and not filename.startswith('__'):
-                        cog_name = filename[:-3]  # Remove .py extension
-                        extension_name = f"cogs.{cog_name}"
-                        
+                        file_name = filename[:-3]  # Remove .py extension
+                        extension_name = f"cogs.{file_name}"
+
+                        # Get the actual cog class name
+                        expected_cog_name = file_to_cog_mapping.get(file_name, file_name.title().replace('_', ''))
+
                         # Skip if already loaded or if it's the update cog
-                        if cog_name.lower() == 'update' or cog_name.title() in loaded_cogs:
+                        if file_name.lower() == 'update' or expected_cog_name in loaded_cogs:
                             continue
-                            
+
                         try:
                             await self.bot.load_extension(extension_name)
-                            results.append(f"✅ Loaded new cog: {cog_name}")
+                            results.append(f"✅ Loaded new cog: {expected_cog_name}")
                         except Exception as e:
-                            failed_cogs.append(f"❌ Failed to load new cog {cog_name}: {str(e)}")
+                            failed_cogs.append(f"❌ Failed to load new cog {file_name}: {str(e)}")
             
             # Sync slash commands
             try:
