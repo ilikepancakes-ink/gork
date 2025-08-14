@@ -695,6 +695,37 @@ class Gork(commands.Cog):
                     }
                 ]
 
+                # Get conversation context from database
+                message_logger = self.get_message_logger()
+                if message_logger and message_logger.db:
+                    try:
+                        # Get recent conversation history for this user (last 10 exchanges)
+                        conversation_context = await message_logger.db.get_conversation_context(
+                            user_id=str(message.author.id),
+                            limit=10
+                        )
+
+                        # Add conversation context to messages (excluding attachments for context)
+                        for ctx_msg in conversation_context:
+                            if ctx_msg["role"] == "user":
+                                # For user messages, only include text content in context
+                                # Don't include attachment details to keep context clean
+                                content = ctx_msg["content"]
+                                if ctx_msg.get("has_attachments"):
+                                    content += " [user sent files/images]"
+
+                                messages.append({
+                                    "role": "user",
+                                    "content": content
+                                })
+                            elif ctx_msg["role"] == "assistant":
+                                messages.append({
+                                    "role": "assistant",
+                                    "content": ctx_msg["content"]
+                                })
+                    except Exception as e:
+                        print(f"Warning: Could not load conversation context: {e}")
+
                 # If the message is a reply, get the replied-to message content and files
                 replied_content = ""
                 replied_files = []
@@ -936,12 +967,43 @@ class Gork(commands.Cog):
             {
                 "role": "system",
                 "content": system_content
-            },
-            {
-                "role": "user",
-                "content": message
             }
         ]
+
+        # Get conversation context from database
+        if message_logger and message_logger.db:
+            try:
+                # Get recent conversation history for this user (last 10 exchanges)
+                conversation_context = await message_logger.db.get_conversation_context(
+                    user_id=str(interaction.user.id),
+                    limit=10
+                )
+
+                # Add conversation context to messages
+                for ctx_msg in conversation_context:
+                    if ctx_msg["role"] == "user":
+                        # For user messages, only include text content in context
+                        content = ctx_msg["content"]
+                        if ctx_msg.get("has_attachments"):
+                            content += " [user sent files/images]"
+
+                        messages.append({
+                            "role": "user",
+                            "content": content
+                        })
+                    elif ctx_msg["role"] == "assistant":
+                        messages.append({
+                            "role": "assistant",
+                            "content": ctx_msg["content"]
+                        })
+            except Exception as e:
+                print(f"Warning: Could not load conversation context: {e}")
+
+        # Add current user message
+        messages.append({
+            "role": "user",
+            "content": message
+        })
 
         ai_response = await self.call_ai(messages)
 

@@ -152,12 +152,12 @@ class MessageDatabase:
         """Get message history for a specific user"""
         if not self.initialized:
             await self.initialize()
-        
+
         try:
             async with aiosqlite.connect(self.db_path) as db:
                 db.row_factory = aiosqlite.Row
                 async with db.execute("""
-                    SELECT m.*, 
+                    SELECT m.*,
                            GROUP_CONCAT(r.response_content, ' ') as bot_responses,
                            COUNT(r.id) as response_count
                     FROM messages m
@@ -171,6 +171,71 @@ class MessageDatabase:
                     return [dict(row) for row in rows]
         except Exception as e:
             print(f"❌ Error getting user message history: {e}")
+            return []
+
+    async def get_conversation_context(self, user_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+        """Get conversation context for a user (alternating user messages and bot responses)"""
+        if not self.initialized:
+            await self.initialize()
+
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                db.row_factory = aiosqlite.Row
+
+                # Get user messages and their corresponding bot responses
+                async with db.execute("""
+                    SELECT
+                        m.message_content as user_message,
+                        m.timestamp as user_timestamp,
+                        m.has_attachments,
+                        m.attachment_info,
+                        r.response_content as bot_response,
+                        r.timestamp as bot_timestamp,
+                        r.model_used
+                    FROM messages m
+                    LEFT JOIN responses r ON m.message_id = r.original_message_id
+                    WHERE m.user_id = ? AND m.message_type = 'user'
+                    ORDER BY m.timestamp DESC
+                    LIMIT ?
+                """, (user_id, limit)) as cursor:
+                    rows = await cursor.fetchall()
+
+                    # Convert to conversation format (most recent first, then reverse for chronological order)
+                    conversation = []
+                    for row in reversed(rows):  # Reverse to get chronological order
+                        row_dict = dict(row)
+
+                        # Add user message
+                        user_msg = {
+                            "role": "user",
+                            "content": row_dict["user_message"],
+                            "timestamp": row_dict["user_timestamp"],
+                            "has_attachments": row_dict["has_attachments"]
+                        }
+
+                        # Parse attachment info if present
+                        if row_dict["attachment_info"]:
+                            try:
+                                user_msg["attachment_info"] = json.loads(row_dict["attachment_info"])
+                            except:
+                                pass
+
+                        conversation.append(user_msg)
+
+                        # Add bot response if it exists
+                        if row_dict["bot_response"]:
+                            bot_msg = {
+                                "role": "assistant",
+                                "content": row_dict["bot_response"],
+                                "timestamp": row_dict["bot_timestamp"],
+                                "model_used": row_dict["model_used"]
+                            }
+                            conversation.append(bot_msg)
+
+                    return conversation
+
+        except Exception as e:
+            print(f"❌ Error getting conversation context: {e}")
             return []
     
     async def get_conversation_stats(self, user_id: Optional[str] = None) -> Dict[str, Any]:
