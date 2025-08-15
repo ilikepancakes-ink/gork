@@ -787,6 +787,7 @@ class Gork(commands.Cog):
                 async with message.channel.typing():
                     # Get AI response
                     ai_response = await self.call_ai(messages)
+                    print(f"DEBUG: AI response received: '{ai_response}' (length: {len(ai_response) if ai_response else 0})")
 
                     # Check if the AI wants to execute a command or perform a Google search
                     if "**EXECUTE_COMMAND:**" in ai_response:
@@ -885,6 +886,10 @@ class Gork(commands.Cog):
 
                     # Calculate processing time
                     processing_time_ms = int((time.time() - processing_start_time) * 1000)
+
+                    # Check if response is empty or just whitespace
+                    if not ai_response or not ai_response.strip():
+                        ai_response = "❌ I received an empty response from the AI. Please try again."
 
                     # Split response if it's too long for Discord
                     if len(ai_response) > 2000:
