@@ -16,7 +16,7 @@ from bs4 import BeautifulSoup
 
 # Optional imports
 try:
-    from moviepy.editor import VideoFileClip
+    from moviepy import VideoFileClip
     MOVIEPY_AVAILABLE = True
 except ImportError:
     MOVIEPY_AVAILABLE = False
