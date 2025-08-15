@@ -12,13 +12,22 @@ import urllib.parse
 import tempfile
 import speech_recognition as sr
 from pydub import AudioSegment
-from moviepy.editor import VideoFileClip
-import whisper
-import tempfile
-import speech_recognition as sr
-from pydub import AudioSegment
-from moviepy.editor import VideoFileClip
 from bs4 import BeautifulSoup
+
+# Optional imports
+try:
+    from moviepy.editor import VideoFileClip
+    MOVIEPY_AVAILABLE = True
+except ImportError:
+    MOVIEPY_AVAILABLE = False
+    print("Warning: moviepy not available. Video processing will be disabled.")
+
+try:
+    import whisper
+    WHISPER_AVAILABLE = True
+except ImportError:
+    WHISPER_AVAILABLE = False
+    print("Warning: whisper not available. Audio transcription will be disabled.")
 import re
 import time
 from datetime import datetime
@@ -74,11 +83,14 @@ class Gork(commands.Cog):
         if not self.searchapi_key:
             print("Warning: SEARCHAPI_KEY not found. Web search functionality will be disabled.")
 
-        try:
-            self.whisper_model = whisper.load_model("base")
-            print("Whisper model loaded successfully for audio transcription")
-        except Exception as e:
-            print(f"Warning: Failed to load Whisper model: {e}")
+        if WHISPER_AVAILABLE:
+            try:
+                self.whisper_model = whisper.load_model("base")
+                print("Whisper model loaded successfully for audio transcription")
+            except Exception as e:
+                print(f"Warning: Failed to load Whisper model: {e}")
+                self.whisper_model = None
+        else:
             self.whisper_model = None
 
     def get_message_logger(self):
@@ -162,24 +174,28 @@ class Gork(commands.Cog):
                     elif filename.lower().endswith('.wav'):
                         audio = AudioSegment.from_wav(input_path)
                     elif filename.lower().endswith('.mp4'):
-                        # For MP4, extract audio using moviepy first
-                        try:
-                            with VideoFileClip(input_path) as video:
-                                audio_clip = video.audio
-                                if audio_clip:
-                                    # Export audio to temporary file
-                                    temp_audio_path = input_path.replace('.mp4', '_audio.wav')
-                                    audio_clip.write_audiofile(temp_audio_path, verbose=False, logger=None)
-                                    audio = AudioSegment.from_wav(temp_audio_path)
-                                    # Clean up temporary audio file
-                                    try:
-                                        os.unlink(temp_audio_path)
-                                    except:
-                                        pass
-                                else:
-                                    return f"❌ No audio track found in video file {filename}"
-                        except Exception as e:
-                            # Fallback to pydub for MP4
+                        # For MP4, extract audio using moviepy first (if available)
+                        if MOVIEPY_AVAILABLE:
+                            try:
+                                with VideoFileClip(input_path) as video:
+                                    audio_clip = video.audio
+                                    if audio_clip:
+                                        # Export audio to temporary file
+                                        temp_audio_path = input_path.replace('.mp4', '_audio.wav')
+                                        audio_clip.write_audiofile(temp_audio_path, verbose=False, logger=None)
+                                        audio = AudioSegment.from_wav(temp_audio_path)
+                                        # Clean up temporary audio file
+                                        try:
+                                            os.unlink(temp_audio_path)
+                                        except:
+                                            pass
+                                    else:
+                                        return f"❌ No audio track found in video file {filename}"
+                            except Exception as e:
+                                # Fallback to pydub for MP4
+                                audio = AudioSegment.from_file(input_path, format="mp4")
+                        else:
+                            # Fallback to pydub for MP4 when moviepy is not available
                             audio = AudioSegment.from_file(input_path, format="mp4")
                     else:
                         # Try to auto-detect format

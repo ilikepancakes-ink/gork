@@ -1,7 +1,7 @@
 import sqlite3
 import aiosqlite
 import asyncio
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 import json
 import os
@@ -278,7 +278,7 @@ class MessageDatabase:
         
         try:
             cutoff_date = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
-            cutoff_date = cutoff_date.replace(day=cutoff_date.day - days_to_keep)
+            cutoff_date = cutoff_date - timedelta(days=days_to_keep)
             
             async with aiosqlite.connect(self.db_path) as db:
                 # Delete old responses first (foreign key constraint)
