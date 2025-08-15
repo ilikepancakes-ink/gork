@@ -44,7 +44,6 @@ class Gork(commands.Cog):
 
         self.recent_bot_messages = {}
 
-        import time
         self.last_cleanup = time.time()
 
         self.message_logger = None
@@ -100,7 +99,6 @@ class Gork(commands.Cog):
 
     async def check_and_delete_duplicate(self, message, content: str):
         import hashlib
-        import time
 
         channel_id = message.channel.id
         content_hash = hashlib.md5(content.encode()).hexdigest()
@@ -135,7 +133,6 @@ class Gork(commands.Cog):
 
     async def track_sent_message(self, message, content: str):
         import hashlib
-        import time
 
         channel_id = message.channel.id
         content_hash = hashlib.md5(content.encode()).hexdigest()
@@ -927,7 +924,6 @@ class Gork(commands.Cog):
                 self.processing_messages.discard(message_id)
 
                 # Periodic cleanup of processing set (every 100 messages)
-                import time
                 current_time = time.time()
                 if current_time - self.last_cleanup > 300:  # 5 minutes
                     # Clear the processing set periodically to prevent memory leaks
