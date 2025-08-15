@@ -150,10 +150,10 @@ class Update(commands.Cog):
         try:
             results = []
             failed_cogs = []
-            
+
             # Get list of loaded cogs
             loaded_cogs = list(self.bot.cogs.keys())
-            
+
             # Create a mapping of cog names to their actual file names
             cog_file_mapping = {
                 'MessageLogger': 'message_logger',
@@ -164,6 +164,14 @@ class Update(commands.Cog):
                 'Update': 'update'
             }
 
+            # Get all available cog files
+            cogs_dir = "cogs"
+            available_cog_files = []
+            if os.path.exists(cogs_dir):
+                available_cog_files = [f[:-3] for f in os.listdir(cogs_dir)
+                                     if f.endswith('.py') and not f.startswith('__')]
+
+            # First, reload existing cogs
             for cog_name in loaded_cogs:
                 try:
                     # Skip reloading the update cog itself to avoid issues
@@ -174,53 +182,59 @@ class Update(commands.Cog):
                     file_name = cog_file_mapping.get(cog_name, cog_name.lower())
                     extension_name = f"cogs.{file_name}"
 
+                    # Check if the file actually exists
+                    if file_name not in available_cog_files:
+                        failed_cogs.append(f"❌ Cog file not found for {cog_name}: {file_name}.py")
+                        continue
+
                     # Reload the extension
                     await self.bot.reload_extension(extension_name)
                     results.append(f"✅ Reloaded {cog_name}")
 
                 except Exception as e:
                     failed_cogs.append(f"❌ Failed to reload {cog_name}: {str(e)}")
-            
-            # Try to load any new cogs that might have been added
-            cogs_dir = "cogs"
-            if os.path.exists(cogs_dir):
+
+            # Then, try to load any new cogs that might have been added
+            if available_cog_files:
                 # Create reverse mapping from file names to cog names
                 file_to_cog_mapping = {v: k for k, v in cog_file_mapping.items()}
 
-                for filename in os.listdir(cogs_dir):
-                    if filename.endswith('.py') and not filename.startswith('__'):
-                        file_name = filename[:-3]  # Remove .py extension
-                        extension_name = f"cogs.{file_name}"
+                for file_name in available_cog_files:
+                    extension_name = f"cogs.{file_name}"
 
-                        # Get the actual cog class name
-                        expected_cog_name = file_to_cog_mapping.get(file_name, file_name.title().replace('_', ''))
+                    # Get the actual cog class name
+                    expected_cog_name = file_to_cog_mapping.get(file_name, file_name.title().replace('_', ''))
 
-                        # Skip if already loaded or if it's the update cog
-                        if file_name.lower() == 'update' or expected_cog_name in loaded_cogs:
-                            continue
+                    # Skip if already loaded or if it's the update cog
+                    if file_name.lower() == 'update' or expected_cog_name in loaded_cogs:
+                        continue
 
-                        try:
-                            await self.bot.load_extension(extension_name)
-                            results.append(f"✅ Loaded new cog: {expected_cog_name}")
-                        except Exception as e:
+                    try:
+                        await self.bot.load_extension(extension_name)
+                        results.append(f"✅ Loaded new cog: {expected_cog_name}")
+                    except Exception as e:
+                        # Check if it's already loaded with a different name
+                        if "already loaded" in str(e).lower():
+                            results.append(f"ℹ️ Cog {file_name} already loaded")
+                        else:
                             failed_cogs.append(f"❌ Failed to load new cog {file_name}: {str(e)}")
-            
+
             # Sync slash commands
             try:
                 await self.bot.tree.sync()
                 results.append("✅ Synced slash commands")
             except Exception as e:
                 failed_cogs.append(f"❌ Failed to sync commands: {str(e)}")
-            
+
             success_msg = "\n".join(results) if results else "No cogs to reload"
             error_msg = "\n".join(failed_cogs) if failed_cogs else ""
-            
+
             full_msg = success_msg
             if error_msg:
                 full_msg += f"\n\n**Errors:**\n{error_msg}"
-            
+
             return len(failed_cogs) == 0, full_msg
-            
+
         except Exception as e:
             return False, f"Reload operation failed: {str(e)}"
 

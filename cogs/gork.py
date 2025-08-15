@@ -898,6 +898,14 @@ class Gork(commands.Cog):
                                 message, sent_message, ai_response, processing_time_ms, self.model
                             ))
 
+            except Exception as e:
+                # Log the error and send a user-friendly message
+                print(f"Error in on_message handler: {e}")
+                try:
+                    await message.reply(f"❌ Sorry, I encountered an error while processing your message: {str(e)}")
+                except Exception as reply_error:
+                    print(f"Failed to send error message: {reply_error}")
+
             finally:
                 # Remove from processing set
                 self.processing_messages.discard(message_id)
