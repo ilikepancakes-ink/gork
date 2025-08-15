@@ -10,8 +10,8 @@ try {
     die('Database connection failed: ' . $e->getMessage());
 }
 
-// Get user statistics
-$query = "SELECT 
+// Get user statistics with settings
+$query = "SELECT
             m.user_id,
             m.username,
             m.user_display_name,
@@ -19,10 +19,14 @@ $query = "SELECT
             COUNT(DISTINCT r.id) as response_count,
             MIN(m.timestamp) as first_message,
             MAX(m.timestamp) as last_message,
-            AVG(r.processing_time_ms) as avg_processing_time
+            AVG(r.processing_time_ms) as avg_processing_time,
+            us.nsfw_mode,
+            us.content_filter_level,
+            us.updated_at as settings_updated
           FROM messages m
           LEFT JOIN responses r ON m.message_id = r.original_message_id
-          GROUP BY m.user_id, m.username, m.user_display_name
+          LEFT JOIN user_settings us ON m.user_id = us.user_id
+          GROUP BY m.user_id, m.username, m.user_display_name, us.nsfw_mode, us.content_filter_level, us.updated_at
           ORDER BY message_count DESC";
 
 $stmt = $pdo->query($query);
@@ -243,6 +247,32 @@ if (isset($_GET['success'])) {
             margin-bottom: 2rem;
             text-align: center;
         }
+
+        .nsfw-indicator {
+            font-weight: 600;
+            padding: 0.2rem 0.5rem;
+            border-radius: 4px;
+            font-size: 0.8rem;
+        }
+
+        .nsfw-enabled {
+            background: #ffe6e6;
+            color: #d63384;
+            border: 1px solid #f8d7da;
+        }
+
+        .nsfw-disabled {
+            background: #e6f7e6;
+            color: #198754;
+            border: 1px solid #c3e6cb;
+        }
+
+        .filter-indicator {
+            font-weight: 500;
+            padding: 0.1rem 0.3rem;
+            border-radius: 3px;
+            font-size: 0.75rem;
+        }
         
         .summary h3 {
             margin-bottom: 1rem;
@@ -289,6 +319,8 @@ if (isset($_GET['success'])) {
                         <th>User</th>
                         <th>Messages</th>
                         <th>Responses</th>
+                        <th>NSFW Mode</th>
+                        <th>Content Filter</th>
                         <th>Avg Processing Time</th>
                         <th>First Message</th>
                         <th>Last Message</th>
@@ -317,6 +349,40 @@ if (isset($_GET['success'])) {
                                 <div class="stats">
                                     <div class="number"><?php echo number_format($user['response_count']); ?></div>
                                     <div class="label">responses</div>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="stats">
+                                    <?php if ($user['nsfw_mode'] === '1' || $user['nsfw_mode'] === 1): ?>
+                                        <div class="number" style="color: #ff6b6b;">🔞 Enabled</div>
+                                        <div class="label">NSFW</div>
+                                    <?php elseif ($user['nsfw_mode'] === '0' || $user['nsfw_mode'] === 0): ?>
+                                        <div class="number" style="color: #51cf66;">✅ Disabled</div>
+                                        <div class="label">Safe</div>
+                                    <?php else: ?>
+                                        <span style="color: #999;">Not Set</span>
+                                    <?php endif; ?>
+                                </div>
+                            </td>
+                            <td>
+                                <div class="stats">
+                                    <?php
+                                    $filter_level = $user['content_filter_level'] ?? 'strict';
+                                    $filter_colors = [
+                                        'strict' => '#51cf66',
+                                        'moderate' => '#ffd43b',
+                                        'minimal' => '#ff6b6b'
+                                    ];
+                                    $filter_icons = [
+                                        'strict' => '🛡️',
+                                        'moderate' => '⚖️',
+                                        'minimal' => '🔓'
+                                    ];
+                                    ?>
+                                    <div class="number" style="color: <?php echo $filter_colors[$filter_level] ?? '#999'; ?>">
+                                        <?php echo $filter_icons[$filter_level] ?? '❓'; ?> <?php echo ucfirst($filter_level); ?>
+                                    </div>
+                                    <div class="label">filter</div>
                                 </div>
                             </td>
                             <td>

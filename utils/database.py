@@ -61,12 +61,27 @@ class MessageDatabase:
                 )
             """)
             
+            # Create user_settings table
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS user_settings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL UNIQUE,
+                    username TEXT,
+                    user_display_name TEXT,
+                    nsfw_mode BOOLEAN DEFAULT FALSE,
+                    content_filter_level TEXT DEFAULT 'strict',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
             # Create indexes for better performance
             await db.execute("CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages (user_id)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages (timestamp)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_responses_original_message ON responses (original_message_id)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_responses_timestamp ON responses (timestamp)")
-            
+            await db.execute("CREATE INDEX IF NOT EXISTS idx_user_settings_user_id ON user_settings (user_id)")
+
             await db.commit()
         
         self.initialized = True
@@ -302,3 +317,146 @@ class MessageDatabase:
         except Exception as e:
             print(f"❌ Error cleaning up old messages: {e}")
             return 0
+
+    async def get_user_settings(self, user_id: str) -> dict:
+        """Get user settings, creating default settings if they don't exist"""
+        if not self.initialized:
+            await self.initialize()
+
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT user_id, username, user_display_name, nsfw_mode, content_filter_level,
+                           created_at, updated_at
+                    FROM user_settings
+                    WHERE user_id = ?
+                """, (user_id,))
+
+                result = await cursor.fetchone()
+
+                if result:
+                    return {
+                        'user_id': result[0],
+                        'username': result[1],
+                        'user_display_name': result[2],
+                        'nsfw_mode': bool(result[3]),
+                        'content_filter_level': result[4],
+                        'created_at': result[5],
+                        'updated_at': result[6]
+                    }
+                else:
+                    # Create default settings for new user
+                    default_settings = {
+                        'user_id': user_id,
+                        'username': None,
+                        'user_display_name': None,
+                        'nsfw_mode': False,
+                        'content_filter_level': 'strict',
+                        'created_at': datetime.utcnow().isoformat(),
+                        'updated_at': datetime.utcnow().isoformat()
+                    }
+                    return default_settings
+
+        except Exception as e:
+            print(f"❌ Error getting user settings: {e}")
+            # Return default settings on error
+            return {
+                'user_id': user_id,
+                'username': None,
+                'user_display_name': None,
+                'nsfw_mode': False,
+                'content_filter_level': 'strict',
+                'created_at': datetime.utcnow().isoformat(),
+                'updated_at': datetime.utcnow().isoformat()
+            }
+
+    async def update_user_settings(self, user_id: str, username: str = None, user_display_name: str = None,
+                                 nsfw_mode: bool = None, content_filter_level: str = None) -> bool:
+        """Update user settings, creating the record if it doesn't exist"""
+        if not self.initialized:
+            await self.initialize()
+
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                # Check if user settings exist
+                cursor = await db.execute("SELECT user_id FROM user_settings WHERE user_id = ?", (user_id,))
+                exists = await cursor.fetchone()
+
+                current_time = datetime.utcnow().isoformat()
+
+                if exists:
+                    # Update existing settings
+                    update_fields = []
+                    update_values = []
+
+                    if username is not None:
+                        update_fields.append("username = ?")
+                        update_values.append(username)
+
+                    if user_display_name is not None:
+                        update_fields.append("user_display_name = ?")
+                        update_values.append(user_display_name)
+
+                    if nsfw_mode is not None:
+                        update_fields.append("nsfw_mode = ?")
+                        update_values.append(nsfw_mode)
+
+                    if content_filter_level is not None:
+                        update_fields.append("content_filter_level = ?")
+                        update_values.append(content_filter_level)
+
+                    if update_fields:
+                        update_fields.append("updated_at = ?")
+                        update_values.append(current_time)
+                        update_values.append(user_id)  # For WHERE clause
+
+                        query = f"UPDATE user_settings SET {', '.join(update_fields)} WHERE user_id = ?"
+                        await db.execute(query, update_values)
+                else:
+                    # Insert new settings
+                    await db.execute("""
+                        INSERT INTO user_settings (user_id, username, user_display_name, nsfw_mode,
+                                                 content_filter_level, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, (user_id, username, user_display_name,
+                         nsfw_mode if nsfw_mode is not None else False,
+                         content_filter_level if content_filter_level is not None else 'strict',
+                         current_time, current_time))
+
+                await db.commit()
+                return True
+
+        except Exception as e:
+            print(f"❌ Error updating user settings: {e}")
+            return False
+
+    async def get_users_with_nsfw_enabled(self) -> list:
+        """Get all users who have NSFW mode enabled"""
+        if not self.initialized:
+            await self.initialize()
+
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT user_id, username, user_display_name, content_filter_level, updated_at
+                    FROM user_settings
+                    WHERE nsfw_mode = TRUE
+                    ORDER BY updated_at DESC
+                """)
+
+                results = await cursor.fetchall()
+
+                return [
+                    {
+                        'user_id': row[0],
+                        'username': row[1],
+                        'user_display_name': row[2],
+                        'content_filter_level': row[3],
+                        'updated_at': row[4]
+                    }
+                    for row in results
+                ]
+
+        except Exception as e:
+            print(f"❌ Error getting users with NSFW enabled: {e}")
+            return []

@@ -38,6 +38,7 @@ except ImportError:
 import re
 import time
 from datetime import datetime
+from utils.content_filter import ContentFilter
 
 class Gork(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -54,6 +55,7 @@ class Gork(commands.Cog):
         self.last_cleanup = time.time()
 
         self.message_logger = None
+        self.content_filter = None  # Will be initialized when needed
         self.safe_commands = {
             'fastfetch': 'fastfetch --stdout',
             'whoami': 'whoami',
@@ -103,6 +105,13 @@ class Gork(commands.Cog):
         if self.message_logger is None:
             self.message_logger = self.bot.get_cog('MessageLogger')
         return self.message_logger
+
+    def get_content_filter(self):
+        if self.content_filter is None:
+            message_logger = self.get_message_logger()
+            if message_logger and message_logger.db:
+                self.content_filter = ContentFilter(message_logger.db)
+        return self.content_filter
 
     async def check_and_delete_duplicate(self, message, content: str):
         import hashlib
@@ -790,6 +799,22 @@ class Gork(commands.Cog):
 
                 system_content += "\n\nKeep responses under 2000 characters to fit Discord's message limit."
 
+                # Add content filtering based on user settings
+                content_filter = self.get_content_filter()
+                if content_filter:
+                    try:
+                        user_content_settings = await content_filter.get_user_content_settings(str(message.author.id))
+                        content_filter_addition = content_filter.get_system_prompt_addition(user_content_settings)
+                        system_content += content_filter_addition
+
+                        # Add content warning if NSFW mode is active
+                        content_warning = content_filter.get_content_warning_message(user_content_settings)
+                        if content_warning:
+                            print(f"NSFW mode active for user {message.author.id} ({message.author.name})")
+                    except Exception as e:
+                        print(f"Error applying content filter: {e}")
+                        # Continue with default strict filtering
+
                 messages = [
                     {
                         "role": "system",
@@ -996,6 +1021,17 @@ class Gork(commands.Cog):
                     # Check if response is empty or just whitespace
                     if not ai_response or not ai_response.strip():
                         ai_response = "❌ I received an empty response from the AI. Please try again."
+
+                    # Add content warning if NSFW mode is active
+                    content_filter = self.get_content_filter()
+                    if content_filter:
+                        try:
+                            user_content_settings = await content_filter.get_user_content_settings(str(message.author.id))
+                            content_warning = content_filter.get_content_warning_message(user_content_settings)
+                            if content_warning:
+                                ai_response = content_warning + ai_response
+                        except Exception as e:
+                            print(f"Error adding content warning: {e}")
 
                     # Split response if it's too long for Discord
                     if len(ai_response) > 2000:
