@@ -957,7 +957,7 @@ class Gork(commands.Cog):
                     system_content += f"\n\nYou can also visit specific websites to read their content. Use this format:\n\n**VISIT_WEBSITE:** url\n\nFor example, if someone asks 'What does this website say?' or provides a URL, you can respond with:\n**VISIT_WEBSITE:** https://example.com\n\nIMPORTANT: When using VISIT_WEBSITE, do NOT add any additional commentary or text. The website content will be automatically formatted and displayed. REMEMBER ONLY RESPOND ONCE TO REQUESTS NO EXCEPTIONS."
 
                 if steam_search_status == "enabled":
-                    system_content += f"\n\nYou can search for Steam games when users ask about games, game prices, or game information. Use this format:\n\n**STEAM_SEARCH:** game name\n\nFor example, if someone asks 'Tell me about Cyberpunk 2077' or 'What's the price of Half-Life 2?', you can respond with:\n**STEAM_SEARCH:** Cyberpunk 2077\n\nThis will return detailed game information including description, price, thumbnail, developer, publisher, release date, genres, platforms, and a link to the Steam store page.\n\nIMPORTANT: When using STEAM_SEARCH, do NOT add any additional commentary or text. The game information will be automatically formatted and displayed. REMEMBER ONLY RESPOND ONCE TO REQUESTS NO EXCEPTIONS."
+                    system_content += f"\n\nYou can search for Steam games when users ask about games, game prices, or game information. ALWAYS use this format when users mention specific game titles or ask about games:\n\n**STEAM_SEARCH:** game name\n\nFor example:\n- User: 'Tell me about Cyberpunk 2077' → You respond: **STEAM_SEARCH:** Cyberpunk 2077\n- User: 'What's the price of Half-Life 2?' → You respond: **STEAM_SEARCH:** Half-Life 2\n- User: 'Show me Portal details' → You respond: **STEAM_SEARCH:** Portal\n- User: 'Search for Elden Ring' → You respond: **STEAM_SEARCH:** Elden Ring\n\nThis will return detailed game information including description, price, thumbnail, developer, publisher, release date, genres, platforms, and a link to the Steam store page.\n\nIMPORTANT: When using STEAM_SEARCH, do NOT add any additional commentary or text. Just respond with the STEAM_SEARCH command only. The game information will be automatically formatted and displayed. REMEMBER ONLY RESPOND ONCE TO REQUESTS NO EXCEPTIONS."
 
                 system_content += "\n\nKeep responses under 2000 characters to fit Discord's message limit."
 
@@ -1082,6 +1082,33 @@ class Gork(commands.Cog):
                     ai_response = await self.call_ai(messages)
                     print(f"DEBUG: AI response received: '{ai_response}' (length: {len(ai_response) if ai_response else 0})")
 
+                    # Check for Steam search patterns
+                    if "steam" in ai_response.lower() or "game" in ai_response.lower():
+                        print(f"DEBUG: Game/Steam related response detected, checking for STEAM_SEARCH pattern")
+                        print(f"DEBUG: Contains **STEAM_SEARCH:**: {'**STEAM_SEARCH:**' in ai_response}")
+                        print(f"DEBUG: Full response for analysis: {repr(ai_response)}")
+
+                        # Fallback: If AI mentions a game but doesn't use STEAM_SEARCH pattern, try to detect game names
+                        if "**STEAM_SEARCH:**" not in ai_response:
+                            # Look for common game-related phrases and try to extract game names
+                            user_message_text = user_content.lower()
+                            game_keywords = ["tell me about", "what's the price of", "show me", "search for", "information about", "details about"]
+
+                            for keyword in game_keywords:
+                                if keyword in user_message_text:
+                                    # Try to extract the game name after the keyword
+                                    parts = user_message_text.split(keyword)
+                                    if len(parts) > 1:
+                                        potential_game = parts[1].strip().split()[0:3]  # Take first few words
+                                        game_name = " ".join(potential_game).strip("?.,!").title()
+                                        if game_name and len(game_name) > 2:
+                                            print(f"DEBUG: Fallback detected potential game name: '{game_name}'")
+                                            # Manually trigger Steam search
+                                            steam_embed = await self.search_steam_game(game_name)
+                                            await message.channel.send(embed=steam_embed)
+                                            ai_response = f"Here's the Steam information for **{game_name}**:"
+                                            break
+
                     # Check if the AI wants to execute a command or perform a Google search
                     if "**EXECUTE_COMMAND:**" in ai_response:
                         # Extract command from response
@@ -1178,6 +1205,7 @@ class Gork(commands.Cog):
                             ai_response = ai_response.replace(visit_line, website_content, 1)
 
                     elif "**STEAM_SEARCH:**" in ai_response:
+                        print(f"DEBUG: Steam search detected in AI response: {ai_response}")
                         # Extract game name from response
                         lines = ai_response.split('\n')
                         steam_line = None
@@ -1189,12 +1217,15 @@ class Gork(commands.Cog):
                         if steam_line:
                             # Extract game name
                             game_name = steam_line.split("**STEAM_SEARCH:**")[1].strip()
+                            print(f"DEBUG: Extracted game name: '{game_name}'")
 
                             # Search for the game on Steam
                             steam_embed = await self.search_steam_game(game_name)
+                            print(f"DEBUG: Steam embed created: {type(steam_embed)}")
 
                             # Send the embed directly and remove the steam instruction from AI response
                             await message.channel.send(embed=steam_embed)
+                            print(f"DEBUG: Steam embed sent to channel")
                             ai_response = ai_response.replace(steam_line, "", 1).strip()
 
                             # If AI response is now empty, set a default message
@@ -1307,7 +1338,7 @@ class Gork(commands.Cog):
             system_content += f"\n\nYou can also visit specific websites to read their content. Use this format:\n\n**VISIT_WEBSITE:** url\n\nFor example, if someone asks 'What does this website say?' or provides a URL, you can respond with:\n**VISIT_WEBSITE:** https://example.com\n\nIMPORTANT: When using VISIT_WEBSITE, do NOT add any additional commentary or text. The website content will be automatically formatted and displayed."
 
         if steam_search_status == "enabled":
-            system_content += f"\n\nYou can search for Steam games when users ask about games, game prices, or game information. Use this format:\n\n**STEAM_SEARCH:** game name\n\nFor example, if someone asks 'Tell me about Cyberpunk 2077' or 'What's the price of Half-Life 2?', you can respond with:\n**STEAM_SEARCH:** Cyberpunk 2077\n\nThis will return detailed game information including description, price, thumbnail, developer, publisher, release date, genres, platforms, and a link to the Steam store page.\n\nIMPORTANT: When using STEAM_SEARCH, do NOT add any additional commentary or text. The game information will be automatically formatted and displayed."
+            system_content += f"\n\nYou can search for Steam games when users ask about games, game prices, or game information. ALWAYS use this format when users mention specific game titles or ask about games:\n\n**STEAM_SEARCH:** game name\n\nFor example:\n- User: 'Tell me about Cyberpunk 2077' → You respond: **STEAM_SEARCH:** Cyberpunk 2077\n- User: 'What's the price of Half-Life 2?' → You respond: **STEAM_SEARCH:** Half-Life 2\n- User: 'Show me Portal details' → You respond: **STEAM_SEARCH:** Portal\n- User: 'Search for Elden Ring' → You respond: **STEAM_SEARCH:** Elden Ring\n\nThis will return detailed game information including description, price, thumbnail, developer, publisher, release date, genres, platforms, and a link to the Steam store page.\n\nIMPORTANT: When using STEAM_SEARCH, do NOT add any additional commentary or text. Just respond with the STEAM_SEARCH command only. The game information will be automatically formatted and displayed."
 
         system_content += "\n\nKeep responses under 2000 characters to fit Discord's message limit."
 
@@ -1477,6 +1508,7 @@ class Gork(commands.Cog):
                 ai_response = ai_response.replace(visit_line, website_content, 1)
 
         elif "**STEAM_SEARCH:**" in ai_response:
+            print(f"DEBUG: Steam search detected in slash command AI response: {ai_response}")
             # Extract game name from response
             lines = ai_response.split('\n')
             steam_line = None
@@ -1488,12 +1520,15 @@ class Gork(commands.Cog):
             if steam_line:
                 # Extract game name
                 game_name = steam_line.split("**STEAM_SEARCH:**")[1].strip()
+                print(f"DEBUG: Extracted game name from slash command: '{game_name}'")
 
                 # Search for the game on Steam
                 steam_embed = await self.search_steam_game(game_name)
+                print(f"DEBUG: Steam embed created for slash command: {type(steam_embed)}")
 
                 # Send the embed directly and remove the steam instruction from AI response
                 await interaction.followup.send(embed=steam_embed)
+                print(f"DEBUG: Steam embed sent via followup")
                 ai_response = ai_response.replace(steam_line, "", 1).strip()
 
                 # If AI response is now empty, set a default message
@@ -1605,6 +1640,29 @@ class Gork(commands.Cog):
         )
 
         await interaction.response.send_message(embed=embed)
+
+    @app_commands.command(name="steam_search", description="Search for a game on Steam")
+    @app_commands.describe(game_name="Name of the game to search for")
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    async def steam_search_command(self, interaction: discord.Interaction, game_name: str):
+        """Manual Steam search command for testing"""
+        await interaction.response.defer()
+
+        try:
+            # Search for the game on Steam
+            steam_embed = await self.search_steam_game(game_name)
+
+            # Send the embed
+            await interaction.followup.send(embed=steam_embed)
+
+        except Exception as e:
+            error_embed = discord.Embed(
+                title="❌ Error",
+                description=f"Failed to search for game: {str(e)}",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=error_embed)
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Gork(bot))
