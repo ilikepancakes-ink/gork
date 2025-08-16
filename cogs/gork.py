@@ -589,8 +589,8 @@ class Gork(commands.Cog):
         except Exception as e:
             return f"❌ Error performing web search: {str(e)}"
 
-    async def search_steam_game(self, game_name: str) -> str:
-        """Search for a game on Steam and return detailed information"""
+    async def search_steam_game(self, game_name: str):
+        """Search for a game on Steam and return detailed information as a Discord embed"""
         # Note: Steam Store API doesn't require an API key for basic searches
 
         try:
@@ -608,7 +608,12 @@ class Gork(commands.Cog):
                         search_data = await response.json()
 
                         if not search_data.get('items'):
-                            return f"🎮 No Steam games found for: {game_name}"
+                            embed = discord.Embed(
+                                title="🎮 Steam Game Search",
+                                description=f"No Steam games found for: **{game_name}**",
+                                color=discord.Color.red()
+                            )
+                            return embed
 
                         # Get the first result (most relevant)
                         first_result = search_data['items'][0]
@@ -626,7 +631,12 @@ class Gork(commands.Cog):
                                 detail_data = await detail_response.json()
 
                                 if str(app_id) not in detail_data or not detail_data[str(app_id)]['success']:
-                                    return f"❌ Could not get detailed information for {game_name}"
+                                    embed = discord.Embed(
+                                        title="❌ Steam API Error",
+                                        description=f"Could not get detailed information for **{game_name}**",
+                                        color=discord.Color.red()
+                                    )
+                                    return embed
 
                                 game_data = detail_data[str(app_id)]['data']
 
@@ -684,29 +694,52 @@ class Gork(commands.Cog):
                                 # Create Steam store URL
                                 steam_url = f"https://store.steampowered.com/app/{app_id}/"
 
-                                # Format the response
-                                formatted_response = f"🎮 **Steam Game: {title}**\n\n"
-                                formatted_response += f"**Description:** {description}\n\n"
-                                formatted_response += f"**Price:** {price_info}\n"
-                                formatted_response += f"**Developer:** {developers}\n"
-                                formatted_response += f"**Publisher:** {publishers}\n"
-                                formatted_response += f"**Release Date:** {release_date}\n"
-                                formatted_response += f"**Genres:** {genre_text}\n"
-                                formatted_response += f"**Platforms:** {platform_text}\n\n"
+                                # Create Discord embed
+                                embed = discord.Embed(
+                                    title=f"🎮 {title}",
+                                    description=description,
+                                    color=discord.Color.blue(),
+                                    url=steam_url
+                                )
 
+                                # Add game details as fields
+                                embed.add_field(name="💰 Price", value=price_info, inline=True)
+                                embed.add_field(name="👨‍💻 Developer", value=developers, inline=True)
+                                embed.add_field(name="🏢 Publisher", value=publishers, inline=True)
+                                embed.add_field(name="📅 Release Date", value=release_date, inline=True)
+                                embed.add_field(name="🎯 Genres", value=genre_text, inline=True)
+                                embed.add_field(name="💻 Platforms", value=platform_text, inline=True)
+
+                                # Set thumbnail if available
                                 if thumbnail_url:
-                                    formatted_response += f"**Thumbnail:** {thumbnail_url}\n\n"
+                                    embed.set_thumbnail(url=thumbnail_url)
 
-                                formatted_response += f"🔗 **[View on Steam]({steam_url})**"
+                                # Add footer with Steam branding
+                                embed.set_footer(text="Steam Store", icon_url="https://cdn.cloudflare.steamstatic.com/steamcommunity/public/images/steamworks_docs/english/steam_icon.png")
 
-                                return formatted_response
+                                return embed
                             else:
-                                return f"❌ Error getting game details from Steam API (status {detail_response.status})"
+                                embed = discord.Embed(
+                                    title="❌ Steam API Error",
+                                    description=f"Error getting game details from Steam API (status {detail_response.status})",
+                                    color=discord.Color.red()
+                                )
+                                return embed
                     else:
-                        return f"❌ Error searching Steam (status {response.status})"
+                        embed = discord.Embed(
+                            title="❌ Steam Search Error",
+                            description=f"Error searching Steam (status {response.status})",
+                            color=discord.Color.red()
+                        )
+                        return embed
 
         except Exception as e:
-            return f"❌ Error searching Steam: {str(e)}"
+            embed = discord.Embed(
+                title="❌ Steam Search Error",
+                description=f"Error searching Steam: {str(e)}",
+                color=discord.Color.red()
+            )
+            return embed
 
     async def get_weather(self, location: str) -> str:
         """Get weather information using the Weather cog"""
@@ -1158,10 +1191,15 @@ class Gork(commands.Cog):
                             game_name = steam_line.split("**STEAM_SEARCH:**")[1].strip()
 
                             # Search for the game on Steam
-                            steam_results = await self.search_steam_game(game_name)
+                            steam_embed = await self.search_steam_game(game_name)
 
-                            # Replace only the specific steam instruction line with the results
-                            ai_response = ai_response.replace(steam_line, steam_results, 1)
+                            # Send the embed directly and remove the steam instruction from AI response
+                            await message.channel.send(embed=steam_embed)
+                            ai_response = ai_response.replace(steam_line, "", 1).strip()
+
+                            # If AI response is now empty, set a default message
+                            if not ai_response:
+                                ai_response = f"Here's the Steam information for **{game_name}**:"
 
                     # Calculate processing time
                     processing_time_ms = int((time.time() - processing_start_time) * 1000)
@@ -1452,10 +1490,15 @@ class Gork(commands.Cog):
                 game_name = steam_line.split("**STEAM_SEARCH:**")[1].strip()
 
                 # Search for the game on Steam
-                steam_results = await self.search_steam_game(game_name)
+                steam_embed = await self.search_steam_game(game_name)
 
-                # Replace only the specific steam instruction line with the results
-                ai_response = ai_response.replace(steam_line, steam_results, 1)
+                # Send the embed directly and remove the steam instruction from AI response
+                await interaction.followup.send(embed=steam_embed)
+                ai_response = ai_response.replace(steam_line, "", 1).strip()
+
+                # If AI response is now empty, set a default message
+                if not ai_response:
+                    ai_response = f"Here's the Steam information for **{game_name}**:"
 
         # Calculate processing time
         processing_time_ms = int((time.time() - processing_start_time) * 1000)
