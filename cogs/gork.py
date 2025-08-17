@@ -1494,16 +1494,28 @@ class Gork(commands.Cog):
 
                             # Search for the game on Steam
                             steam_embed = await self.search_steam_game(game_name)
+                            print(f"DEBUG: Steam embed content (dict) in on_message: {steam_embed.to_dict()}")
                             print(f"DEBUG: Steam embed created: {type(steam_embed)}")
 
                             # Send the embed directly and remove the steam instruction from AI response
-                            await message.channel.send(embed=steam_embed)
-                            print(f"DEBUG: Steam embed sent to channel")
-                            ai_response = ai_response.replace(steam_line, "", 1).strip()
+                            try:
+                                await message.channel.send(embed=steam_embed)
+                                print(f"DEBUG: Steam embed sent successfully in on_message.")
+                            except discord.HTTPException as e:
+                                print(f"ERROR: Failed to send Steam embed (HTTPException) in on_message: {e} - {e.text}")
+                                await message.channel.send(f"❌ Failed to send Steam game information embed: {e.text}")
+                            except discord.Forbidden:
+                                print(f"ERROR: Bot lacks permissions to send embeds in this channel (on_message).")
+                                await message.channel.send(f"❌ I don't have permission to send embeds in this channel.")
+                            except Exception as e:
+                                print(f"ERROR: Unexpected error sending Steam embed in on_message: {e}")
+                                await message.channel.send(f"❌ An unexpected error occurred while sending Steam game information: {e}")
+                            # print(f"DEBUG: Steam embed sent to channel") # Commented out as part of debugging
+                            # ai_response = ai_response.replace(steam_line, "", 1).strip() # Commented out as part of debugging
 
                             # If AI response is now empty, set a default message
-                            if not ai_response:
-                                ai_response = f"Here's the Steam information for **{game_name}**:"
+                            # if not ai_response: # Commented out as part of debugging
+                            #     ai_response = f"Here's the Steam information for **{game_name}**:" # Commented out as part of debugging
 
                     elif "**SPOTIFY_SEARCH:**" in ai_response:
                         print(f"DEBUG: Spotify search detected in AI response: {ai_response}")
@@ -1552,30 +1564,30 @@ class Gork(commands.Cog):
                             print(f"Error adding content warning: {e}")
 
                     # Split response if it's too long for Discord
-                    if ai_response.strip(): # Add this line to check if ai_response is not empty or just whitespace
-                        if len(ai_response) > 2000:
-                            # Split into chunks of 2000 characters
-                            chunks = [ai_response[i:i+2000] for i in range(0, len(ai_response), 2000)]
-                            total_chunks = len(chunks)
-                            for i, chunk in enumerate(chunks, 1):
-                                sent_message = await message.reply(chunk)
-                                # Track this message to prevent duplicates
-                                await self.track_sent_message(sent_message, chunk)
-                                # Log bot response to database
-                                if message_logger:
-                                    asyncio.create_task(message_logger.log_bot_response(
-                                        message, sent_message, chunk, processing_time_ms,
-                                        self.model, (total_chunks, i)
-                                    ))
-                        else:
-                            sent_message = await message.reply(ai_response)
-                            # Track this message to prevent duplicates
-                            await self.track_sent_message(sent_message, ai_response)
-                            # Log bot response to database
-                            if message_logger:
-                                asyncio.create_task(message_logger.log_bot_response(
-                                    message, sent_message, ai_response, processing_time_ms, self.model
-                                ))
+                    # if ai_response.strip(): # Add this line to check if ai_response is not empty or just whitespace # Commented out as part of debugging
+                    #     if len(ai_response) > 2000: # Commented out as part of debugging
+                    #         # Split into chunks of 2000 characters # Commented out as part of debugging
+                    #         chunks = [ai_response[i:i+2000] for i in range(0, len(ai_response), 2000)] # Commented out as part of debugging
+                    #         total_chunks = len(chunks) # Commented out as part of debugging
+                    #         for i, chunk in enumerate(chunks, 1): # Commented out as part of debugging
+                    #             sent_message = await message.reply(chunk) # Commented out as part of debugging
+                    #             # Track this message to prevent duplicates # Commented out as part of debugging
+                    #             await self.track_sent_message(sent_message, chunk) # Commented out as part of debugging
+                    #             # Log bot response to database # Commented out as part of debugging
+                    #             if message_logger: # Commented out as part of debugging
+                    #                 asyncio.create_task(message_logger.log_bot_response( # Commented out as part of debugging
+                    #                     message, sent_message, chunk, processing_time_ms, # Commented out as part of debugging
+                    #                     self.model, (total_chunks, i) # Commented out as part of debugging
+                    #                 )) # Commented out as part of debugging
+                    #     else: # Commented out as part of debugging
+                    #         sent_message = await message.reply(ai_response) # Commented out as part of debugging
+                    #         # Track this message to prevent duplicates # Commented out as part of debugging
+                    #         await self.track_sent_message(sent_message, ai_response) # Commented out as part of debugging
+                    #         # Log bot response to database # Commented out as part of debugging
+                    #         if message_logger: # Commented out as part of debugging
+                    #             asyncio.create_task(message_logger.log_bot_response( # Commented out as part of debugging
+                    #                 message, sent_message, ai_response, processing_time_ms, self.model # Commented out as part of debugging
+                    #             )) # Commented out as part of debugging
 
             except Exception as e:
                 # Log the error and send a user-friendly message
@@ -1830,16 +1842,28 @@ class Gork(commands.Cog):
 
                 # Search for the game on Steam
                 steam_embed = await self.search_steam_game(game_name)
+                print(f"DEBUG: Steam embed content (dict) in gork_command: {steam_embed.to_dict()}")
                 print(f"DEBUG: Steam embed created for slash command: {type(steam_embed)}")
 
                 # Send the embed directly and remove the steam instruction from AI response
-                await interaction.followup.send(embed=steam_embed)
-                print(f"DEBUG: Steam embed sent via followup")
-                ai_response = ai_response.replace(steam_line, "", 1).strip()
+                try:
+                    await interaction.followup.send(embed=steam_embed)
+                    print(f"DEBUG: Steam embed sent successfully in gork_command.")
+                except discord.HTTPException as e:
+                    print(f"ERROR: Failed to send Steam embed (HTTPException) in gork_command: {e} - {e.text}")
+                    await interaction.followup.send(f"❌ Failed to send Steam game information embed: {e.text}")
+                except discord.Forbidden:
+                    print(f"ERROR: Bot lacks permissions to send embeds in this channel (gork_command).")
+                    await interaction.followup.send(f"❌ I don't have permission to send embeds in this channel.")
+                except Exception as e:
+                    print(f"ERROR: Unexpected error sending Steam embed in gork_command: {e}")
+                    await interaction.followup.send(f"❌ An unexpected error occurred while sending Steam game information: {e}")
+                # print(f"DEBUG: Steam embed sent via followup") # Commented out as part of debugging
+                # ai_response = ai_response.replace(steam_line, "", 1).strip() # Commented out as part of debugging
 
                 # If AI response is now empty, set a default message
-                if not ai_response:
-                    ai_response = f"Here's the Steam information for **{game_name}**:"
+                # if not ai_response: # Commented out as part of debugging
+                #     ai_response = f"Here's the Steam information for **{game_name}**:" # Commented out as part of debugging
 
         elif "**SPOTIFY_SEARCH:**" in ai_response:
             print(f"DEBUG: Spotify search detected in slash command AI response: {ai_response}")
@@ -1872,36 +1896,36 @@ class Gork(commands.Cog):
         # Calculate processing time
         processing_time_ms = int((time.time() - processing_start_time) * 1000)
 
-        # Split response if it's too long for Discord
-        if len(ai_response) > 2000:
-            # Split into chunks of 2000 characters
-            chunks = [ai_response[i:i+2000] for i in range(0, len(ai_response), 2000)]
-            total_chunks = len(chunks)
-            sent_message = await interaction.followup.send(chunks[0])
-            await self.track_sent_message(sent_message, chunks[0])
-            # Log first chunk
-            if message_logger:
-                asyncio.create_task(message_logger.log_bot_response_from_interaction(
-                    interaction, sent_message, chunks[0], processing_time_ms,
-                    self.model, (total_chunks, 1)
-                ))
-            for i, chunk in enumerate(chunks[1:], 2):
-                sent_message = await interaction.followup.send(chunk)
-                await self.track_sent_message(sent_message, chunk)
-                # Log additional chunks
-                if message_logger:
-                    asyncio.create_task(message_logger.log_bot_response_from_interaction(
-                        interaction, sent_message, chunk, processing_time_ms,
-                        self.model, (total_chunks, i)
-                    ))
-        else:
-            sent_message = await interaction.followup.send(ai_response)
-            await self.track_sent_message(sent_message, ai_response)
-            # Log single response
-            if message_logger:
-                asyncio.create_task(message_logger.log_bot_response_from_interaction(
-                    interaction, sent_message, ai_response, processing_time_ms, self.model
-                ))
+        # Split response if it's too long for Discord # Commented out as part of debugging
+        # if len(ai_response) > 2000: # Commented out as part of debugging
+        #     # Split into chunks of 2000 characters # Commented out as part of debugging
+        #     chunks = [ai_response[i:i+2000] for i in range(0, len(ai_response), 2000)] # Commented out as part of debugging
+        #     total_chunks = len(chunks) # Commented out as part of debugging
+        #     sent_message = await interaction.followup.send(chunks[0]) # Commented out as part of debugging
+        #     await self.track_sent_message(sent_message, chunks[0]) # Commented out as part of debugging
+        #     # Log first chunk # Commented out as part of debugging
+        #     if message_logger: # Commented out as part of debugging
+        #         asyncio.create_task(message_logger.log_bot_response_from_interaction( # Commented out as part of debugging
+        #             interaction, sent_message, chunks[0], processing_time_ms, # Commented out as part of debugging
+        #             self.model, (total_chunks, 1) # Commented out as part of debugging
+        #         )) # Commented out as part of debugging
+        #     for i, chunk in enumerate(chunks[1:], 2): # Commented out as part of debugging
+        #         sent_message = await interaction.followup.send(chunk) # Commented out as part of debugging
+        #         await self.track_sent_message(sent_message, chunk) # Commented out as part of debugging
+        #         # Log additional chunks # Commented out as part of debugging
+        #         if message_logger: # Commented out as part of debugging
+        #             asyncio.create_task(message_logger.log_bot_response_from_interaction( # Commented out as part of debugging
+        #                 interaction, sent_message, chunk, processing_time_ms, # Commented out as part of debugging
+        #                 self.model, (total_chunks, i) # Commented out as part of debugging
+        #             )) # Commented out as part of debugging
+        # else: # Commented out as part of debugging
+        #     sent_message = await interaction.followup.send(ai_response) # Commented out as part of debugging
+        #     await self.track_sent_message(sent_message, ai_response) # Commented out as part of debugging
+        #     # Log single response # Commented out as part of debugging
+        #     if message_logger: # Commented out as part of debugging
+        #         asyncio.create_task(message_logger.log_bot_response_from_interaction( # Commented out as part of debugging
+        #             interaction, sent_message, ai_response, processing_time_ms, self.model # Commented out as part of debugging
+        #         )) # Commented out as part of debugging
 
     @app_commands.command(name="gork_status", description="Check Gork AI status")
     @app_commands.allowed_installs(guilds=True, users=True)
