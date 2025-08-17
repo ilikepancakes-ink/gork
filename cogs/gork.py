@@ -102,7 +102,7 @@ class Gork(commands.Cog):
         self.spotify_client_id = os.getenv("SPOTIFY_CLIENT_ID")
         self.spotify_client_secret = os.getenv("SPOTIFY_CLIENT_SECRET")
         self.spotify_client = None
-
+        self.spotify_url_pattern = re.compile(r"https://open.spotify.com/(track|album|artist|playlist)/([a-zA-Z0-9]+)")
 
 
         if not self.openrouter_api_key:
@@ -861,6 +861,135 @@ class Gork(commands.Cog):
             )
             return embed
 
+    async def _create_spotify_embed_from_url(self, item_type: str, item_id: str):
+        """Helper to create a Discord embed from a Spotify URL type and ID."""
+        if not self.spotify_client:
+            return None
+
+        try:
+            if item_type == "track":
+                track = self.spotify_client.track(item_id)
+                if not track: return None
+
+                track_name = track['name']
+                artists = ', '.join([artist['name'] for artist in track['artists']])
+                album_name = track['album']['name']
+                release_date = track['album']['release_date']
+                duration_ms = track['duration_ms']
+                popularity = track['popularity']
+                explicit = track['explicit']
+
+                duration_seconds = duration_ms // 1000
+                duration_minutes = duration_seconds // 60
+                duration_seconds = duration_seconds % 60
+                duration_formatted = f"{duration_minutes}:{duration_seconds:02d}"
+
+                album_image_url = ""
+                if track['album']['images']:
+                    album_image_url = track['album']['images'][0]['url']
+
+                spotify_url = track['external_urls']['spotify']
+                preview_url = track.get('preview_url', '')
+
+                embed = discord.Embed(
+                    title=f"🎵 {track_name}",
+                    description=f"by **{artists}**",
+                    color=0x1DB954, # Spotify green
+                    url=spotify_url
+                )
+                embed.add_field(name="💿 Album", value=album_name, inline=True)
+                embed.add_field(name="📅 Release Date", value=release_date, inline=True)
+                embed.add_field(name="⏱️ Duration", value=duration_formatted, inline=True)
+                embed.add_field(name="📊 Popularity", value=f"{popularity}/100", inline=True)
+                embed.add_field(name="🔞 Explicit", value="Yes" if explicit else "No", inline=True)
+                if preview_url:
+                    embed.add_field(name="🎧 Preview", value=f"[Listen Preview]({preview_url})", inline=True)
+                else:
+                    embed.add_field(name="🎧 Preview", value="Not available", inline=True)
+                if album_image_url:
+                    embed.set_thumbnail(url=album_image_url)
+                embed.set_footer(text="Spotify", icon_url="https://developer.spotify.com/assets/branding-guidelines/icon1@2x.png")
+                return embed
+
+            elif item_type == "album":
+                album = self.spotify_client.album(item_id)
+                if not album: return None
+
+                album_name = album['name']
+                artists = ', '.join([artist['name'] for artist in album['artists']])
+                release_date = album['release_date']
+                total_tracks = album['total_tracks']
+                album_image_url = ""
+                if album['images']:
+                    album_image_url = album['images'][0]['url']
+                spotify_url = album['external_urls']['spotify']
+
+                embed = discord.Embed(
+                    title=f"💿 {album_name}",
+                    description=f"by **{artists}**",
+                    color=0x1DB954,
+                    url=spotify_url
+                )
+                embed.add_field(name="📅 Release Date", value=release_date, inline=True)
+                embed.add_field(name="🔢 Total Tracks", value=str(total_tracks), inline=True)
+                if album_image_url:
+                    embed.set_thumbnail(url=album_image_url)
+                embed.set_footer(text="Spotify", icon_url="https://developer.spotify.com/assets/branding-guidelines/icon1@2x.png")
+                return embed
+
+            elif item_type == "artist":
+                artist = self.spotify_client.artist(item_id)
+                if not artist: return None
+
+                artist_name = artist['name']
+                genres = ', '.join(artist['genres']) if artist['genres'] else 'N/A'
+                followers = artist['followers']['total']
+                artist_image_url = ""
+                if artist['images']:
+                    artist_image_url = artist['images'][0]['url']
+                spotify_url = artist['external_urls']['spotify']
+
+                embed = discord.Embed(
+                    title=f"🎤 {artist_name}",
+                    description=f"Followers: {followers:,}",
+                    color=0x1DB954,
+                    url=spotify_url
+                )
+                embed.add_field(name="🎭 Genres", value=genres, inline=True)
+                if artist_image_url:
+                    embed.set_thumbnail(url=artist_image_url)
+                embed.set_footer(text="Spotify", icon_url="https://developer.spotify.com/assets/branding-guidelines/icon1@2x.png")
+                return embed
+
+            elif item_type == "playlist":
+                playlist = self.spotify_client.playlist(item_id)
+                if not playlist: return None
+
+                playlist_name = playlist['name']
+                owner = playlist['owner']['display_name']
+                description = playlist['description']
+                total_tracks = playlist['tracks']['total']
+                playlist_image_url = ""
+                if playlist['images']:
+                    playlist_image_url = playlist['images'][0]['url']
+                spotify_url = playlist['external_urls']['spotify']
+
+                embed = discord.Embed(
+                    title=f"🎶 {playlist_name}",
+                    description=f"Created by: {owner}\n{description[:200]}{'...' if len(description) > 200 else ''}",
+                    color=0x1DB954,
+                    url=spotify_url
+                )
+                embed.add_field(name="🔢 Total Tracks", value=str(total_tracks), inline=True)
+                if playlist_image_url:
+                    embed.set_thumbnail(url=playlist_image_url)
+                embed.set_footer(text="Spotify", icon_url="https://developer.spotify.com/assets/branding-guidelines/icon1@2x.png")
+                return embed
+
+        except Exception as e:
+            print(f"Error fetching Spotify details for {item_type} {item_id}: {e}")
+            return None
+
     async def get_weather(self, location: str) -> str:
         """Get weather information using the Weather cog"""
         # Get the weather cog
@@ -1038,6 +1167,26 @@ class Gork(commands.Cog):
         is_mentioned = self.bot.user in message.mentions
 
         if is_mentioned or is_dm:
+            # Spotify URL detection and embed creation
+            if self.spotify_client:
+                match = self.spotify_url_pattern.search(message.content)
+                if match:
+                    item_type = match.group(1)
+                    item_id = match.group(2)
+                    print(f"DEBUG: Detected Spotify URL: type={item_type}, id={item_id}")
+
+                    try:
+                        embed = await self._create_spotify_embed_from_url(item_type, item_id)
+                        if embed:
+                            await message.channel.send(embed=embed)
+                            # Optionally suppress the original embed
+                            # await message.edit(suppress=True)
+                            print(f"DEBUG: Sent Spotify embed for {item_type} with ID {item_id}")
+                            return # Stop further processing if a Spotify embed was sent
+                    except Exception as e:
+                        print(f"Error creating Spotify embed from URL: {e}")
+                        # Continue processing the message if embed creation fails
+
             # Create a unique identifier for this message
             message_id = f"{message.channel.id}_{message.id}"
 
