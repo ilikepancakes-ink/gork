@@ -1379,7 +1379,7 @@ class Gork(commands.Cog):
                                             # Manually trigger Steam search
                                             steam_embed = await self.search_steam_game(game_name)
                                             await message.channel.send(embed=steam_embed)
-                                            ai_response = f"Here's the Steam information for **{game_name}**:"
+                                            ai_response = ""
                                             break
 
                     # Check if the AI wants to execute a command or perform a Google search
@@ -1552,29 +1552,30 @@ class Gork(commands.Cog):
                             print(f"Error adding content warning: {e}")
 
                     # Split response if it's too long for Discord
-                    if len(ai_response) > 2000:
-                        # Split into chunks of 2000 characters
-                        chunks = [ai_response[i:i+2000] for i in range(0, len(ai_response), 2000)]
-                        total_chunks = len(chunks)
-                        for i, chunk in enumerate(chunks, 1):
-                            sent_message = await message.reply(chunk)
+                    if ai_response.strip(): # Add this line to check if ai_response is not empty or just whitespace
+                        if len(ai_response) > 2000:
+                            # Split into chunks of 2000 characters
+                            chunks = [ai_response[i:i+2000] for i in range(0, len(ai_response), 2000)]
+                            total_chunks = len(chunks)
+                            for i, chunk in enumerate(chunks, 1):
+                                sent_message = await message.reply(chunk)
+                                # Track this message to prevent duplicates
+                                await self.track_sent_message(sent_message, chunk)
+                                # Log bot response to database
+                                if message_logger:
+                                    asyncio.create_task(message_logger.log_bot_response(
+                                        message, sent_message, chunk, processing_time_ms,
+                                        self.model, (total_chunks, i)
+                                    ))
+                        else:
+                            sent_message = await message.reply(ai_response)
                             # Track this message to prevent duplicates
-                            await self.track_sent_message(sent_message, chunk)
+                            await self.track_sent_message(sent_message, ai_response)
                             # Log bot response to database
                             if message_logger:
                                 asyncio.create_task(message_logger.log_bot_response(
-                                    message, sent_message, chunk, processing_time_ms,
-                                    self.model, (total_chunks, i)
+                                    message, sent_message, ai_response, processing_time_ms, self.model
                                 ))
-                    else:
-                        sent_message = await message.reply(ai_response)
-                        # Track this message to prevent duplicates
-                        await self.track_sent_message(sent_message, ai_response)
-                        # Log bot response to database
-                        if message_logger:
-                            asyncio.create_task(message_logger.log_bot_response(
-                                message, sent_message, ai_response, processing_time_ms, self.model
-                            ))
 
             except Exception as e:
                 # Log the error and send a user-friendly message
