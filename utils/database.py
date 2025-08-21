@@ -75,6 +75,18 @@ class MessageDatabase:
                 )
             """)
 
+            # Create guild_settings table
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS guild_settings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id TEXT NOT NULL UNIQUE,
+                    guild_name TEXT,
+                    random_messages_enabled BOOLEAN DEFAULT FALSE,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
             # Create indexes for better performance
             await db.execute("CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages (user_id)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages (timestamp)")
@@ -429,6 +441,124 @@ class MessageDatabase:
         except Exception as e:
             print(f"❌ Error updating user settings: {e}")
             return False
+
+    async def get_guild_settings(self, guild_id: str) -> dict:
+        """Get guild settings, creating default settings if they don't exist"""
+        if not self.initialized:
+            await self.initialize()
+
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT guild_id, guild_name, random_messages_enabled, created_at, updated_at
+                    FROM guild_settings
+                    WHERE guild_id = ?
+                """, (guild_id,))
+
+                result = await cursor.fetchone()
+
+                if result:
+                    return {
+                        'guild_id': result[0],
+                        'guild_name': result[1],
+                        'random_messages_enabled': bool(result[2]),
+                        'created_at': result[3],
+                        'updated_at': result[4]
+                    }
+                else:
+                    # Return default settings for new guild
+                    default_settings = {
+                        'guild_id': guild_id,
+                        'guild_name': None,
+                        'random_messages_enabled': False,
+                        'created_at': datetime.utcnow().isoformat(),
+                        'updated_at': datetime.utcnow().isoformat()
+                    }
+                    return default_settings
+
+        except Exception as e:
+            print(f"❌ Error getting guild settings: {e}")
+            # Return default settings on error
+            return {
+                'guild_id': guild_id,
+                'guild_name': None,
+                'random_messages_enabled': False,
+                'created_at': datetime.utcnow().isoformat(),
+                'updated_at': datetime.utcnow().isoformat()
+            }
+
+    async def update_guild_settings(self, guild_id: str, guild_name: str = None,
+                                  random_messages_enabled: bool = None) -> bool:
+        """Update guild settings, creating the record if it doesn't exist"""
+        if not self.initialized:
+            await self.initialize()
+
+        try:
+            current_time = datetime.utcnow().isoformat()
+
+            async with aiosqlite.connect(self.db_path) as db:
+                # Check if guild settings exist
+                cursor = await db.execute("SELECT guild_id FROM guild_settings WHERE guild_id = ?", (guild_id,))
+                exists = await cursor.fetchone()
+
+                if exists:
+                    # Update existing settings
+                    update_fields = []
+                    update_values = []
+
+                    if guild_name is not None:
+                        update_fields.append("guild_name = ?")
+                        update_values.append(guild_name)
+
+                    if random_messages_enabled is not None:
+                        update_fields.append("random_messages_enabled = ?")
+                        update_values.append(random_messages_enabled)
+
+                    if update_fields:
+                        update_fields.append("updated_at = ?")
+                        update_values.append(current_time)
+                        update_values.append(guild_id)  # For WHERE clause
+
+                        query = f"UPDATE guild_settings SET {', '.join(update_fields)} WHERE guild_id = ?"
+                        await db.execute(query, update_values)
+                else:
+                    # Insert new settings
+                    await db.execute("""
+                        INSERT INTO guild_settings (guild_id, guild_name, random_messages_enabled,
+                                                  created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (guild_id, guild_name,
+                         random_messages_enabled if random_messages_enabled is not None else False,
+                         current_time, current_time))
+
+                await db.commit()
+                return True
+
+        except Exception as e:
+            print(f"❌ Error updating guild settings: {e}")
+            return False
+
+    async def get_channel_messages(self, channel_id: str, limit: int = 50) -> List[str]:
+        """Get recent messages from a specific channel for random message generation"""
+        if not self.initialized:
+            await self.initialize()
+
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT message_content
+                    FROM messages
+                    WHERE channel_id = ? AND message_type = 'user' AND message_content != ''
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                """, (channel_id, limit))
+
+                results = await cursor.fetchall()
+                return [row[0] for row in results]
+
+        except Exception as e:
+            print(f"❌ Error getting channel messages: {e}")
+            return []
 
     async def get_users_with_nsfw_enabled(self) -> list:
         """Get all users who have NSFW mode enabled"""

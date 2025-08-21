@@ -46,6 +46,7 @@ except ImportError:
 
 import re
 import time
+import random
 from datetime import datetime
 from utils.content_filter import ContentFilter
 
@@ -1003,6 +1004,66 @@ class Gork(commands.Cog):
         except Exception as e:
             return f"❌ Error getting weather data: {str(e)}"
 
+    async def generate_random_message(self, channel_id: str) -> str:
+        """Generate a random message based on channel history"""
+        try:
+            # Get message logger to access database
+            message_logger = self.get_message_logger()
+            if not message_logger or not message_logger.db:
+                return None
+
+            # Get recent messages from the channel
+            recent_messages = await message_logger.db.get_channel_messages(channel_id, limit=30)
+
+            if len(recent_messages) < 5:
+                # Not enough message history to generate a meaningful response
+                return None
+
+            # Create a prompt for the AI to generate the most likely next message
+            messages_context = "\n".join(recent_messages[-20:])  # Use last 20 messages
+
+            system_prompt = """You are analyzing a Discord channel's message history to predict the most likely next message that would naturally fit the conversation flow.
+
+Based on the recent messages below, generate a single, natural message that would logically continue the conversation. The message should:
+- Feel authentic to the conversation style and tone
+- Be contextually relevant to recent topics
+- Match the typical length and style of messages in this channel
+- Not be too formal or robotic
+- Be engaging but not disruptive
+
+Recent messages (most recent last):"""
+
+            messages = [
+                {
+                    "role": "system",
+                    "content": system_prompt
+                },
+                {
+                    "role": "user",
+                    "content": f"{messages_context}\n\nGenerate the most likely next message:"
+                }
+            ]
+
+            # Call AI with shorter response limit for random messages
+            ai_response = await self.call_ai(messages, max_tokens=150)
+
+            if ai_response and len(ai_response.strip()) > 0:
+                # Clean up the response
+                ai_response = ai_response.strip()
+                # Remove quotes if the AI wrapped the response in them
+                if ai_response.startswith('"') and ai_response.endswith('"'):
+                    ai_response = ai_response[1:-1]
+                if ai_response.startswith("'") and ai_response.endswith("'"):
+                    ai_response = ai_response[1:-1]
+
+                return ai_response
+
+            return None
+
+        except Exception as e:
+            print(f"Error generating random message: {e}")
+            return None
+
     async def visit_website(self, url: str) -> str:
         """Visit a website and extract its content"""
         try:
@@ -1165,6 +1226,48 @@ class Gork(commands.Cog):
         # Check if bot is mentioned or if it's a DM
         is_dm = isinstance(message.channel, discord.DMChannel)
         is_mentioned = self.bot.user in message.mentions
+
+        # Random message generation (only in guilds, not DMs)
+        if not is_dm and not is_mentioned and message.guild:
+            try:
+                # Get message logger to access database
+                message_logger = self.get_message_logger()
+                if message_logger and message_logger.db:
+                    # Check if random messages are enabled for this guild
+                    guild_settings = await message_logger.db.get_guild_settings(str(message.guild.id))
+
+                    if guild_settings.get('random_messages_enabled', False):
+                        # 4/10 chance (40%) to generate a random message
+                        if random.randint(1, 10) <= 4:
+                            print(f"Random message trigger activated in {message.guild.name} #{message.channel.name}")
+
+                            # Log the user message first
+                            asyncio.create_task(message_logger.log_user_message(message))
+
+                            # Generate random message
+                            random_message = await self.generate_random_message(str(message.channel.id))
+
+                            if random_message and len(random_message.strip()) > 0:
+                                try:
+                                    # Send the random message
+                                    sent_message = await message.channel.send(random_message)
+                                    await self.track_sent_message(sent_message, random_message)
+
+                                    # Log the bot response
+                                    asyncio.create_task(message_logger.log_bot_response(
+                                        message, sent_message, random_message, 0,
+                                        f"{self.model} (random)", None
+                                    ))
+
+                                    print(f"Sent random message: {random_message[:50]}...")
+                                    return  # Don't process as mention/DM
+
+                                except Exception as e:
+                                    print(f"Error sending random message: {e}")
+                            else:
+                                print("Random message generation returned empty result")
+            except Exception as e:
+                print(f"Error in random message processing: {e}")
 
         if is_mentioned or is_dm:
             # Spotify URL detection and embed creation
@@ -1628,7 +1731,7 @@ class Gork(commands.Cog):
         safe_commands_list = ', '.join(self.safe_commands.keys())
         web_search_status = "enabled" if self.searchapi_key else "disabled"
         weather_status = "enabled" if self.bot.get_cog('Weather') is not None else "disabled"
-        steam_search_status = "enabled"  # Steam Store API doesn't require API key
+        steam_search_status = "enabled"  
         spotify_search_status = "enabled" if self.spotify_client else "disabled"
 
         system_content = f"You are Gork, a helpful AI assistant on Discord. You are currently chatting in a {context_type}. You are friendly, knowledgeable, and concise in your responses. You can see and analyze images (including static images and animated GIFs), read and analyze text files (including .txt, .py, .js, .html, .css, .json, .md, and many other file types), and listen to and transcribe audio/video files (.mp3, .wav, .mp4) that users send. \n\nYou can also execute safe system commands to gather server information. When a user asks for system information, you can use the following format to execute commands:\n\n**EXECUTE_COMMAND:** command_name\n\nAvailable safe commands: {safe_commands_list}\n\nFor example, if someone asks about system info, you can respond with:\n**EXECUTE_COMMAND:** fastfetch\n\nWhen you execute fastfetch, analyze and summarize the output in a user-friendly way, highlighting key system information like OS, CPU, memory, etc. Don't just show the raw output - provide a nice summary."
