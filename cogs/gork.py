@@ -1219,23 +1219,31 @@ Recent messages (most recent last):"""
             await self.check_and_delete_duplicate(message, message.content)
             return
 
-        # Don't respond to other bots
-        if message.author.bot:
-            return
-
         # Check if bot is mentioned or if it's a DM
         is_dm = isinstance(message.channel, discord.DMChannel)
         is_mentioned = self.bot.user in message.mentions
 
-        # Random message generation (only in guilds, not DMs)
-        if not is_dm and not is_mentioned and message.guild:
-            try:
-                # Get message logger to access database
-                message_logger = self.get_message_logger()
-                if message_logger and message_logger.db:
-                    # Check if random messages are enabled for this guild
-                    guild_settings = await message_logger.db.get_guild_settings(str(message.guild.id))
+        # Get message logger to access database
+        message_logger = self.get_message_logger()
+        guild_settings = {}
+        if message.guild and message_logger and message_logger.db:
+            guild_settings = await message_logger.db.get_guild_settings(str(message.guild.id))
 
+        # Handle bot replies based on settings
+        if message.author.bot:
+            if not guild_settings.get('bot_reply_enabled', False):
+                return # Don't respond to other bots unless enabled
+            # If bot_reply_enabled is true, continue processing as if it were a regular message
+            # No need to set is_mentioned or is_dm, as the bot might be mentioned or it might be a reply_all scenario
+
+        # Handle reply_all based on settings
+        if not is_dm and not is_mentioned and message.guild:
+            if guild_settings.get('reply_all_enabled', False):
+                is_mentioned = True # Treat as if mentioned to trigger AI response
+
+            # Random message generation (only in guilds, not DMs, and not if already handled by reply_all)
+            if not is_mentioned: # Only run random messages if not already going to reply
+                try:
                     if guild_settings.get('random_messages_enabled', False):
                         # 4/10 chance (40%) to generate a random message
                         if random.randint(1, 10) <= 4:
@@ -1266,8 +1274,13 @@ Recent messages (most recent last):"""
                                     print(f"Error sending random message: {e}")
                             else:
                                 print("Random message generation returned empty result")
-            except Exception as e:
-                print(f"Error in random message processing: {e}")
+                except Exception as e:
+                    print(f"Error in random message processing: {e}")
+
+        # If it's our bot's message, check for duplicates and return
+        if message.author == self.bot.user:
+            await self.check_and_delete_duplicate(message, message.content)
+            return
 
         if is_mentioned or is_dm:
             # Spotify URL detection and embed creation
