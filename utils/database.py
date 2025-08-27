@@ -82,6 +82,8 @@ class MessageDatabase:
                     guild_id TEXT NOT NULL UNIQUE,
                     guild_name TEXT,
                     random_messages_enabled BOOLEAN DEFAULT FALSE,
+                    bot_reply_enabled BOOLEAN DEFAULT FALSE,
+                    reply_all_enabled BOOLEAN DEFAULT FALSE,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
@@ -450,7 +452,7 @@ class MessageDatabase:
         try:
             async with aiosqlite.connect(self.db_path) as db:
                 cursor = await db.execute("""
-                    SELECT guild_id, guild_name, random_messages_enabled, created_at, updated_at
+                    SELECT guild_id, guild_name, random_messages_enabled, bot_reply_enabled, reply_all_enabled, created_at, updated_at
                     FROM guild_settings
                     WHERE guild_id = ?
                 """, (guild_id,))
@@ -462,8 +464,10 @@ class MessageDatabase:
                         'guild_id': result[0],
                         'guild_name': result[1],
                         'random_messages_enabled': bool(result[2]),
-                        'created_at': result[3],
-                        'updated_at': result[4]
+                        'bot_reply_enabled': bool(result[3]),
+                        'reply_all_enabled': bool(result[4]),
+                        'created_at': result[5],
+                        'updated_at': result[6]
                     }
                 else:
                     # Return default settings for new guild
@@ -471,6 +475,8 @@ class MessageDatabase:
                         'guild_id': guild_id,
                         'guild_name': None,
                         'random_messages_enabled': False,
+                        'bot_reply_enabled': False,
+                        'reply_all_enabled': False,
                         'created_at': datetime.utcnow().isoformat(),
                         'updated_at': datetime.utcnow().isoformat()
                     }
@@ -483,12 +489,16 @@ class MessageDatabase:
                 'guild_id': guild_id,
                 'guild_name': None,
                 'random_messages_enabled': False,
+                'bot_reply_enabled': False,
+                'reply_all_enabled': False,
                 'created_at': datetime.utcnow().isoformat(),
                 'updated_at': datetime.utcnow().isoformat()
             }
 
     async def update_guild_settings(self, guild_id: str, guild_name: str = None,
-                                  random_messages_enabled: bool = None) -> bool:
+                                  random_messages_enabled: bool = None,
+                                  bot_reply_enabled: bool = None,
+                                  reply_all_enabled: bool = None) -> bool:
         """Update guild settings, creating the record if it doesn't exist"""
         if not self.initialized:
             await self.initialize()
@@ -514,6 +524,14 @@ class MessageDatabase:
                         update_fields.append("random_messages_enabled = ?")
                         update_values.append(random_messages_enabled)
 
+                    if bot_reply_enabled is not None:
+                        update_fields.append("bot_reply_enabled = ?")
+                        update_values.append(bot_reply_enabled)
+
+                    if reply_all_enabled is not None:
+                        update_fields.append("reply_all_enabled = ?")
+                        update_values.append(reply_all_enabled)
+
                     if update_fields:
                         update_fields.append("updated_at = ?")
                         update_values.append(current_time)
@@ -525,10 +543,13 @@ class MessageDatabase:
                     # Insert new settings
                     await db.execute("""
                         INSERT INTO guild_settings (guild_id, guild_name, random_messages_enabled,
+                                                  bot_reply_enabled, reply_all_enabled,
                                                   created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
                     """, (guild_id, guild_name,
                          random_messages_enabled if random_messages_enabled is not None else False,
+                         bot_reply_enabled if bot_reply_enabled is not None else False,
+                         reply_all_enabled if reply_all_enabled is not None else False,
                          current_time, current_time))
 
                 await db.commit()
