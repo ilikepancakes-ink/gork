@@ -45,41 +45,49 @@ class ServerSettings(commands.Cog):
         guild_id = str(interaction.guild.id)
         guild_name = interaction.guild.name
 
-        success = await self.db.update_guild_settings(
-            guild_id=guild_id,
-            guild_name=guild_name,
-            random_messages_enabled=enabled
-        )
-
-        if success:
-            status = "enabled" if enabled else "disabled"
-            embed = discord.Embed(
-                title="✅ Gork Settings Updated",
-                description=f"Random messages have been **{status}** for this server.\n\n"
-                           f"When enabled, there's a 4/10 chance that any message sent in this server "
-                           f"will trigger the bot to generate and send the most likely next message based "
-                           f"on the channel's message history.",
-                color=discord.Color.green()
+        try:
+            success = await self.db.update_guild_settings(
+                guild_id=guild_id,
+                guild_name=guild_name,
+                random_messages_enabled=enabled
             )
-            if enabled:
-                embed.add_field(
-                    name="📝 How it works",
-                    value="• 40% chance to trigger on any message\n"
-                          "• Bot analyzes recent channel messages\n"
-                          "• Generates contextually appropriate response\n"
-                          "• Only works in channels where bot can see message history",
-                    inline=False
+
+            if success:
+                status = "enabled" if enabled else "disabled"
+                embed = discord.Embed(
+                    title="✅ Gork Settings Updated",
+                    description=f"Random messages have been **{status}** for this server.\n\n"
+                               f"When enabled, there's a 4/10 chance that any message sent in this server "
+                               f"will trigger the bot to generate and send the most likely next message based "
+                               f"on the channel's message history.",
+                    color=discord.Color.green()
                 )
-                embed.add_field(
-                    name="⚠️ Note",
-                    value="The bot needs to have logged messages in this channel to generate responses. "
-                          "If this is a new setup, it may take some time to build up message history.",
-                    inline=False
+                if enabled:
+                    embed.add_field(
+                        name="📝 How it works",
+                        value="• 40% chance to trigger on any message\n"
+                              "• Bot analyzes recent channel messages\n"
+                              "• Generates contextually appropriate response\n"
+                              "• Only works in channels where bot can see message history",
+                        inline=False
+                    )
+                    embed.add_field(
+                        name="⚠️ Note",
+                        value="The bot needs to have logged messages in this channel to generate responses. "
+                              "If this is a new setup, it may take some time to build up message history.",
+                        inline=False
+                    )
+            else:
+                embed = discord.Embed(
+                    title="❌ Error",
+                    description="Failed to update server settings. Please try again.",
+                    color=discord.Color.red()
                 )
-        else:
+        except Exception as e:
+            print(f"Error in random_messages command: {e}")
             embed = discord.Embed(
                 title="❌ Error",
-                description="Failed to update server settings. Please try again.",
+                description=f"An unexpected error occurred: {e}",
                 color=discord.Color.red()
             )
         await interaction.response.send_message(embed=embed)
@@ -95,23 +103,31 @@ class ServerSettings(commands.Cog):
         guild_id = str(interaction.guild.id)
         guild_name = interaction.guild.name
 
-        success = await self.db.update_guild_settings(
-            guild_id=guild_id,
-            guild_name=guild_name,
-            bot_reply_enabled=enabled
-        )
-
-        if success:
-            status = "enabled" if enabled else "disabled"
-            embed = discord.Embed(
-                title="✅ Gork Settings Updated",
-                description=f"Gork's replies to other bots have been **{status}** for this server.",
-                color=discord.Color.green()
+        try:
+            success = await self.db.update_guild_settings(
+                guild_id=guild_id,
+                guild_name=guild_name,
+                bot_reply_enabled=enabled
             )
-        else:
+
+            if success:
+                status = "enabled" if enabled else "disabled"
+                embed = discord.Embed(
+                    title="✅ Gork Settings Updated",
+                    description=f"Gork's replies to other bots have been **{status}** for this server.",
+                    color=discord.Color.green()
+                )
+            else:
+                embed = discord.Embed(
+                    title="❌ Error",
+                    description="Failed to update server settings. Please try again.",
+                    color=discord.Color.red()
+                )
+        except Exception as e:
+            print(f"Error in bot_reply command: {e}")
             embed = discord.Embed(
                 title="❌ Error",
-                description="Failed to update server settings. Please try again.",
+                description=f"An unexpected error occurred: {e}",
                 color=discord.Color.red()
             )
         await interaction.response.send_message(embed=embed)
@@ -127,30 +143,38 @@ class ServerSettings(commands.Cog):
         guild_id = str(interaction.guild.id)
         guild_name = interaction.guild.name
 
-        success = await self.db.update_guild_settings(
-            guild_id=guild_id,
-            guild_name=guild_name,
-            reply_all_enabled=enabled
-        )
-
-        if success:
-            status = "enabled" if enabled else "disabled"
-            embed = discord.Embed(
-                title="✅ Gork Settings Updated",
-                description=f"Gork will now reply to all messages (not just mentions/DMs) in this server: **{status}**.",
-                color=discord.Color.green()
+        try:
+            success = await self.db.update_guild_settings(
+                guild_id=guild_id,
+                guild_name=guild_name,
+                reply_all_enabled=enabled
             )
-            if enabled:
-                embed.add_field(
-                    name="⚠️ Warning",
-                    value="Enabling 'Reply All' can make Gork very chatty and may lead to high API usage. "
-                          "Consider using this setting carefully.",
-                    inline=False
+
+            if success:
+                status = "enabled" if enabled else "disabled"
+                embed = discord.Embed(
+                    title="✅ Gork Settings Updated",
+                    description=f"Gork will now reply to all messages (not just mentions/DMs) in this server: **{status}**.",
+                    color=discord.Color.green()
                 )
-        else:
+                if enabled:
+                    embed.add_field(
+                        name="⚠️ Warning",
+                        value="Enabling 'Reply All' can make Gork very chatty and may lead to high API usage. "
+                              "Consider using this setting carefully.",
+                        inline=False
+                    )
+            else:
+                embed = discord.Embed(
+                    title="❌ Error",
+                    description="Failed to update server settings. Please try again.",
+                    color=discord.Color.red()
+                )
+        except Exception as e:
+            print(f"Error in reply_all command: {e}")
             embed = discord.Embed(
                 title="❌ Error",
-                description="Failed to update server settings. Please try again.",
+                description=f"An unexpected error occurred: {e}",
                 color=discord.Color.red()
             )
         await interaction.response.send_message(embed=embed)
@@ -218,4 +242,6 @@ class ServerSettings(commands.Cog):
         await interaction.response.send_message(embed=embed)
 
 async def setup(bot: commands.Bot):
-    await bot.add_cog(ServerSettings(bot))
+    cog = ServerSettings(bot)
+    await cog.db.initialize() # Explicitly initialize the database when the cog is loaded
+    await bot.add_cog(cog)
