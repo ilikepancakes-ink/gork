@@ -6,18 +6,19 @@ from typing import Optional
 from datetime import datetime, timezone
 
 # Import database operations
-from database.operations import get_user_data, set_user_data, update_user_data_field
+from utils.database import MessageDatabase
 from lists import config
 
 
 class UserInfoCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
+        self.db = MessageDatabase("data/bot_messages.db") # Initialize database
         self.developer_badges = {
             config.Owners.ILIKEPANCAKES: f"{config.CustomEmoji.STAFF_BLUE}OpenGuard Developer",
             config.Owners.SLIPSTREAM: f"{config.CustomEmoji.STAFF_PINK}OpenGuard Developer",
         }
-        # Legacy variables for compatibility
+        # Legacy variables for compatibility (no longer needed with database)
         self.custom_data_file = "user_data.json"
         self.custom_user_data = {}
 
@@ -72,35 +73,6 @@ class UserInfoCog(commands.Cog):
     async def save_custom_data(self):
         """Legacy function - now a no-op since data is saved directly to database."""
         pass
-
-    async def get_custom_user_data(self, user_id):
-        """Get custom user data from database."""
-        try:
-            return await get_user_data(user_id)
-        except Exception as e:
-            print(f"Failed to get user data for user {user_id}: {e}")
-            return {}
-
-    async def set_custom_user_value(self, user_id, key, value):
-        """Set a custom user value in the database."""
-        try:
-            return await update_user_data_field(user_id, key, value)
-        except Exception as e:
-            print(f"Failed to set custom user value for user {user_id}: {e}")
-            return False
-
-    async def remove_custom_user_value(self, user_id, key):
-        """Remove a custom user value from the database."""
-        try:
-            current_data = await get_user_data(user_id)
-            if key in current_data:
-                del current_data[key]
-                await set_user_data(user_id, current_data)
-                return True
-            return False
-        except Exception as e:
-            print(f"Failed to remove custom user value for user {user_id}: {e}")
-            return False
 
     async def is_authorized_admin(self, ctx: commands.Context):
         return ctx.author.guild_permissions.administrator
@@ -216,15 +188,15 @@ class UserInfoCog(commands.Cog):
         if badge_str:
             embed.add_field(name="Badge", value=badge_str, inline=False)
 
-        custom_user_data = await self.get_custom_user_data(member.id)
-        if custom_user_data:
-            notes_str = ""
-            for key, value in custom_user_data.items():
-                notes_str += f"**{key.replace('_', ' ').title()}:** {value}\n"
-            if notes_str:
-                # Truncate notes if too long for Discord embed field limit
-                notes_str = self._truncate_field_value(notes_str)
-                embed.add_field(name="📋 Admin Notes", value=notes_str, inline=False)
+        # Removed custom_user_data and Admin Notes field as it's incompatible with current database structure
+        # custom_user_data = await self.get_custom_user_data(member.id)
+        # if custom_user_data:
+        #     notes_str = ""
+        #     for key, value in custom_user_data.items():
+        #         notes_str += f"**{key.replace('_', ' ').title()}:** {value}\n"
+        #     if notes_str:
+        #         notes_str = self._truncate_field_value(notes_str)
+        #         embed.add_field(name="📋 Admin Notes", value=notes_str, inline=False)
         embed.add_field(name="Nickname", value=member.nick or "None", inline=True)
         embed.add_field(name="Username", value=f"{member.name}#{member.discriminator}", inline=True)
         embed.add_field(name="User ID", value=member.id, inline=True)
@@ -262,96 +234,6 @@ class UserInfoCog(commands.Cog):
             )
         )
         return embed, view
-
-    @commands.hybrid_group(
-        name="usernote",
-        description="Admin commands for managing user notes.",
-    )
-    async def usernote(self, ctx: commands.Context):
-        """Admin commands for managing user notes."""
-        await ctx.send_help(ctx.command)
-
-    @usernote.command(name="set", description="Set a note for a user.")
-    @app_commands.describe(
-        user="The user to set a note for.",
-        key="The note's title or key.",
-        value="The content of the note.",
-    )
-    async def set_custom_value(
-        self,
-        ctx: commands.Context,
-        user: discord.Member,
-        key: str,
-        value: str,
-    ):
-        if not await self.is_authorized_admin(ctx):
-            return
-
-        key = key.strip().lower().replace(" ", "_")
-        if not key or len(key) > 50:
-            await ctx.reply(
-                "❌ Key must be between 1-50 characters and contain no spaces.",
-                ephemeral=True,
-            )
-            return
-
-        value = value.strip()
-        if not value or len(value) > 500:
-            await ctx.reply("❌ Value must be between 1-500 characters.", ephemeral=True)
-            return
-
-        await self.set_custom_user_value(user.id, key, value)
-        await ctx.reply(
-            f"✅ Set note for {user.mention}:\n**{key}:** {value}",
-            ephemeral=True,
-        )
-
-    @usernote.command(name="remove", description="Remove a note from a user.")
-    @app_commands.describe(
-        user="The user to remove a note from.",
-        key="The title/key of the note to remove.",
-    )
-    async def remove_custom_value(self, ctx: commands.Context, user: discord.Member, key: str):
-        if await self.remove_custom_user_value(user.id, key):
-            await ctx.reply(f"✅ Removed note '{key}' for {user.mention}", ephemeral=True)
-        else:
-            await ctx.reply(f"❌ No note with key '{key}' found for {user.mention}", ephemeral=True)
-
-    @usernote.command(name="list", description="List all notes for a user.")
-    @app_commands.describe(user="The user to list notes for.")
-    async def list_custom_values(self, ctx: commands.Context, user: discord.Member):
-        if not await self.is_authorized_admin(ctx):
-            return
-
-        custom_data = await self.get_custom_user_data(user.id)
-        if not custom_data:
-            await ctx.reply(f"❌ No notes found for {user.mention}", ephemeral=True)
-            return
-
-        content = f"**Notes for {user.display_name}**\n\n"
-        for key, value in custom_data.items():
-            display_value = value if len(value) <= 100 else value[:97] + "..."
-            content += f"**{key}:** {display_value}\n"
-
-        await ctx.reply(content, ephemeral=True)
-
-    @usernote.command(name="clear", description="Clear all notes for a user.")
-    @app_commands.describe(user="The user to clear all notes for.")
-    async def clear_custom_values(self, ctx: commands.Context, user: discord.Member):
-        if not await self.is_authorized_admin(ctx):
-            return
-
-        try:
-            from database.operations import delete_user_data
-
-            success = await delete_user_data(user.id)
-            if success:
-                await ctx.reply(f"✅ Cleared all custom data for {user.mention}", ephemeral=True)
-            else:
-                await ctx.reply(f"❌ No custom data found for {user.mention}", ephemeral=True)
-        except Exception as e:
-            print(f"Failed to clear custom data for user {user.id}: {e}")
-            await ctx.reply(f"❌ Error clearing custom data for {user.mention}", ephemeral=True)
 
     @commands.Cog.listener()
     async def on_interaction(self, interaction: discord.Interaction):

@@ -590,3 +590,17 @@ class MessageDatabase:
         except Exception as e:
             print(f"❌ Error getting users with NSFW enabled: {e}")
             return []
+
+    async def delete_user_settings(self, user_id: str) -> bool:
+        """Delete a user's settings from the database."""
+        if not self.initialized:
+            await self.initialize()
+
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                await db.execute("DELETE FROM user_settings WHERE user_id = ?", (user_id,))
+                await db.commit()
+                return True
+        except Exception as e:
+            print(f"❌ Error deleting user settings for {user_id}: {e}")
+            return False
