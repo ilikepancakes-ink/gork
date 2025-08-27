@@ -4,9 +4,14 @@ from discord.ext import commands
 from dotenv import load_dotenv
 import asyncio
 from discord import app_commands
+import sys # Import sys
+import os # Import os if not already imported
 
 load_dotenv("ai.env")
 discord_token = os.getenv("DISCORD_TOKEN")
+
+# Add the current working directory to sys.path to ensure modules like 'utils.database' are found
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 if not discord_token:
     raise ValueError("Missing DISCORD_TOKEN environment variable.")
