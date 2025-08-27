@@ -3,6 +3,7 @@ from discord.ext import commands
 from discord import app_commands
 from typing import Optional
 from utils.database import MessageDatabase
+import discord
 
 class ServerSettings(commands.Cog):
     """Cog for managing server-specific settings including random messages"""
@@ -132,21 +133,30 @@ class ServerSettings(commands.Cog):
             )
         await interaction.response.send_message(embed=embed)
 
-    @gorksettings.command(name="reply_all", description="Toggle Gork replying to all messages (not just mentions/DMs)")
-    @app_commands.describe(enabled="Enable (True) or disable (False) Gork replying to all messages")
+    @gorksettings.command(name="reply_all", description="Toggle Gork replying to all messages in the current channel")
+    @app_commands.describe(enabled="Enable (True) or disable (False) Gork replying to all messages in this channel")
     @app_commands.default_permissions(administrator=True)
     async def reply_all(self, interaction: discord.Interaction, enabled: bool):
-        """Toggle Gork replying to all messages"""
+        """Toggle Gork replying to all messages in the current channel"""
         if not await self._check_admin_permissions(interaction):
             return
 
-        guild_id = str(interaction.guild.id)
-        guild_name = interaction.guild.name
+        if not interaction.channel or not interaction.guild:
+            embed = discord.Embed(
+                title="❌ Channel Only Command",
+                description="This command can only be used in a server channel.",
+                color=discord.Color.red()
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
 
+        channel_id = str(interaction.channel.id)
+        guild_id = str(interaction.guild.id)
+        
         try:
-            success = await self.db.update_guild_settings(
+            success = await self.db.update_channel_settings(
+                channel_id=channel_id,
                 guild_id=guild_id,
-                guild_name=guild_name,
                 reply_all_enabled=enabled
             )
 
@@ -154,7 +164,7 @@ class ServerSettings(commands.Cog):
                 status = "enabled" if enabled else "disabled"
                 embed = discord.Embed(
                     title="✅ Gork Settings Updated",
-                    description=f"Gork will now reply to all messages (not just mentions/DMs) in this server: **{status}**.",
+                    description=f"Gork will now reply to all messages (not just mentions/DMs) in this channel: **{status}**.",
                     color=discord.Color.green()
                 )
                 if enabled:
@@ -167,7 +177,7 @@ class ServerSettings(commands.Cog):
             else:
                 embed = discord.Embed(
                     title="❌ Error",
-                    description="Failed to update server settings. Please try again.",
+                    description="Failed to update channel settings. Please try again.",
                     color=discord.Color.red()
                 )
         except Exception as e:
@@ -179,9 +189,9 @@ class ServerSettings(commands.Cog):
             )
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="server_status", description="View current server settings")
+    @app_commands.command(name="server_status", description="View current server and channel settings")
     async def server_status(self, interaction: discord.Interaction):
-        """Display current server settings"""
+        """Display current server and channel settings"""
         
         if not interaction.guild:
             embed = discord.Embed(
@@ -193,11 +203,10 @@ class ServerSettings(commands.Cog):
             return
         
         guild_id = str(interaction.guild.id)
-        settings = await self.db.get_guild_settings(guild_id)
+        guild_settings = await self.db.get_guild_settings(guild_id)
         
-        random_messages_status = "🎲 Enabled" if settings.get('random_messages_enabled', False) else "❌ Disabled"
-        bot_reply_status = "🤖 Enabled" if settings.get('bot_reply_enabled', False) else "❌ Disabled"
-        reply_all_status = "💬 Enabled" if settings.get('reply_all_enabled', False) else "❌ Disabled"
+        random_messages_status = "🎲 Enabled" if guild_settings.get('random_messages_enabled', False) else "❌ Disabled"
+        bot_reply_status = "🤖 Enabled" if guild_settings.get('bot_reply_enabled', False) else "❌ Disabled"
         
         embed = discord.Embed(
             title="⚙️ Server Settings",
@@ -206,22 +215,35 @@ class ServerSettings(commands.Cog):
         )
         
         embed.add_field(
-            name="Random Messages",
+            name="Random Messages (Server)",
             value=random_messages_status,
             inline=True
         )
         embed.add_field(
-            name="Reply to Bots",
+            name="Reply to Bots (Server)",
             value=bot_reply_status,
             inline=True
         )
-        embed.add_field(
-            name="Reply to All Messages",
-            value=reply_all_status,
-            inline=True
-        )
+
+        # Channel-specific settings
+        if interaction.channel and isinstance(interaction.channel, discord.TextChannel):
+            channel_id = str(interaction.channel.id)
+            channel_settings = await self.db.get_channel_settings(channel_id, guild_id)
+            reply_all_channel_status = "💬 Enabled" if channel_settings.get('reply_all_enabled', False) else "❌ Disabled"
+            
+            embed.add_field(
+                name="Reply to All Messages (Current Channel)",
+                value=reply_all_channel_status,
+                inline=True
+            )
+        else:
+            embed.add_field(
+                name="Reply to All Messages (Current Channel)",
+                value="N/A (Not a text channel)",
+                inline=True
+            )
         
-        if settings.get('random_messages_enabled', False):
+        if guild_settings.get('random_messages_enabled', False):
             embed.add_field(
                 name="📊 Random Message Info",
                 value="• 40% chance per message\n• Uses channel message history\n• Generates contextual responses",
@@ -229,10 +251,10 @@ class ServerSettings(commands.Cog):
             )
         
         embed.add_field(
-            name="🔧 Configuration",
-            value="Use `/gorksettings random_messages enabled:True/False` to toggle random messages\n"
-                  "Use `/gorksettings bot_reply enabled:True/False` to toggle replying to bots\n"
-                  "Use `/gorksettings reply_all enabled:True/False` to toggle replying to all messages\n"
+            name=" Configuration",
+            value="Use `/gorksettings random_messages enabled:True/False` to toggle random messages (server-wide)\n"
+                  "Use `/gorksettings bot_reply enabled:True/False` to toggle replying to bots (server-wide)\n"
+                  "Use `/gorksettings reply_all enabled:True/False` to toggle replying to all messages (current channel)\n"
                   "(Administrator permission required)",
             inline=False
         )

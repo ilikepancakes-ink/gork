@@ -49,6 +49,7 @@ import time
 import random
 from datetime import datetime
 from utils.content_filter import ContentFilter
+from utils.database import MessageDatabase # Import MessageDatabase
 
 class Gork(commands.Cog):
     def __init__(self, bot: commands.Bot):
@@ -1226,8 +1227,10 @@ Recent messages (most recent last):"""
         # Get message logger to access database
         message_logger = self.get_message_logger()
         guild_settings = {}
+        channel_settings = {} # Initialize channel settings
         if message.guild and message_logger and message_logger.db:
             guild_settings = await message_logger.db.get_guild_settings(str(message.guild.id))
+            channel_settings = await message_logger.db.get_channel_settings(str(message.channel.id), str(message.guild.id))
 
         # Handle bot replies based on settings
         if message.author.bot:
@@ -1236,12 +1239,13 @@ Recent messages (most recent last):"""
             # If bot_reply_enabled is true, continue processing as if it were a regular message
             # No need to set is_mentioned or is_dm, as the bot might be mentioned or it might be a reply_all scenario
 
-        # Handle reply_all based on settings
+        # Handle reply_all based on settings (now channel-specific)
         if not is_dm and not is_mentioned and message.guild:
-            if guild_settings.get('reply_all_enabled', False):
+            if channel_settings.get('reply_all_enabled', False): # Check channel settings
                 is_mentioned = True # Treat as if mentioned to trigger AI response
 
             # Random message generation (only in guilds, not DMs, and not if already handled by reply_all)
+            # This part still uses guild_settings for random messages, as it's a server-wide feature
             if not is_mentioned: # Only run random messages if not already going to reply
                 try:
                     if guild_settings.get('random_messages_enabled', False):

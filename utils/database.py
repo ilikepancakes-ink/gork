@@ -89,6 +89,18 @@ class MessageDatabase:
                 )
             """)
 
+            # Create channel_settings table
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS channel_settings (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    channel_id TEXT NOT NULL UNIQUE,
+                    guild_id TEXT NOT NULL,
+                    reply_all_enabled BOOLEAN DEFAULT FALSE,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
             # Create indexes for better performance
             await db.execute("CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages (user_id)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages (timestamp)")
@@ -557,6 +569,98 @@ class MessageDatabase:
 
         except Exception as e:
             print(f"❌ Error updating guild settings: {e}")
+            return False
+
+    async def get_channel_settings(self, channel_id: str, guild_id: str) -> dict:
+        """Get channel settings, creating default settings if they don't exist"""
+        if not self.initialized:
+            await self.initialize()
+
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT channel_id, guild_id, reply_all_enabled, created_at, updated_at
+                    FROM channel_settings
+                    WHERE channel_id = ?
+                """, (channel_id,))
+
+                result = await cursor.fetchone()
+
+                if result:
+                    return {
+                        'channel_id': result[0],
+                        'guild_id': result[1],
+                        'reply_all_enabled': bool(result[2]),
+                        'created_at': result[3],
+                        'updated_at': result[4]
+                    }
+                else:
+                    # Return default settings for new channel
+                    default_settings = {
+                        'channel_id': channel_id,
+                        'guild_id': guild_id,
+                        'reply_all_enabled': False,
+                        'created_at': datetime.utcnow().isoformat(),
+                        'updated_at': datetime.utcnow().isoformat()
+                    }
+                    return default_settings
+
+        except Exception as e:
+            print(f"❌ Error getting channel settings: {e}")
+            # Return default settings on error
+            return {
+                'channel_id': channel_id,
+                'guild_id': guild_id,
+                'reply_all_enabled': False,
+                'created_at': datetime.utcnow().isoformat(),
+                'updated_at': datetime.utcnow().isoformat()
+            }
+
+    async def update_channel_settings(self, channel_id: str, guild_id: str,
+                                  reply_all_enabled: bool = None) -> bool:
+        """Update channel settings, creating the record if it doesn't exist"""
+        if not self.initialized:
+            await self.initialize()
+
+        try:
+            current_time = datetime.utcnow().isoformat()
+
+            async with aiosqlite.connect(self.db_path) as db:
+                # Check if channel settings exist
+                cursor = await db.execute("SELECT channel_id FROM channel_settings WHERE channel_id = ?", (channel_id,))
+                exists = await cursor.fetchone()
+
+                if exists:
+                    # Update existing settings
+                    update_fields = []
+                    update_values = []
+
+                    if reply_all_enabled is not None:
+                        update_fields.append("reply_all_enabled = ?")
+                        update_values.append(reply_all_enabled)
+
+                    if update_fields:
+                        update_fields.append("updated_at = ?")
+                        update_values.append(current_time)
+                        update_values.append(channel_id)  # For WHERE clause
+
+                        query = f"UPDATE channel_settings SET {', '.join(update_fields)} WHERE channel_id = ?"
+                        await db.execute(query, update_values)
+                else:
+                    # Insert new settings
+                    await db.execute("""
+                        INSERT INTO channel_settings (channel_id, guild_id, reply_all_enabled,
+                                                  created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (channel_id, guild_id,
+                         reply_all_enabled if reply_all_enabled is not None else False,
+                         current_time, current_time))
+
+                await db.commit()
+                return True
+
+        except Exception as e:
+            print(f"❌ Error updating channel settings: {e}")
             return False
 
     async def get_channel_messages(self, channel_id: str, limit: int = 50) -> List[str]:
