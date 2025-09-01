@@ -21,8 +21,15 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="/", intents=intents)
 async def load_cogs():
+    # Explicitly load steam_tool first
+    try:
+        await bot.load_extension("cogs.steam_tool")
+        print("Loaded cog: steam_tool.py")
+    except Exception as e:
+        print(f"Failed to load cog steam_tool.py: {e}")
+
     for filename in os.listdir("cogs"):
-        if filename.endswith(".py"):
+        if filename.endswith(".py") and filename != "steam_tool.py": # Skip if already loaded
             try:
                 await bot.load_extension(f"cogs.{filename[:-3]}")
                 print(f"Loaded cog: {filename}")
