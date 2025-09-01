@@ -2,7 +2,9 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from typing import Optional
+import os
 from utils.database import MessageDatabase
+from utils.steam_api import resolve_vanity_url
 
 class UserSettings(commands.Cog):
     """Cog for managing user-specific settings including NSFW mode"""
@@ -280,8 +282,117 @@ class UserSettings(commands.Cog):
                 description=f"Failed to retrieve NSFW statistics: {str(e)}",
                 color=discord.Color.red()
             )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
-        await interaction.response.send_message(embed=embed, ephemeral=True)
+    @app_commands.command(name="link_steam", description="Link your Steam account to your Discord profile")
+    @app_commands.describe(
+        customurl="Your Steam custom URL (e.g., 'gabelogannewell')",
+        steam_id="Your 64-bit Steam ID (e.g., '76561198000000000')"
+    )
+    @app_commands.allowed_installs(guilds=True, users=True)
+    @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
+    async def link_steam(self, interaction: discord.Interaction, customurl: Optional[str] = None, steam_id: Optional[str] = None):
+        """Link a Steam account to the user's Discord profile."""
+        
+        user_id = str(interaction.user.id)
+        username = interaction.user.name
+        user_display_name = interaction.user.display_name
+
+        await interaction.response.defer(ephemeral=True)
+
+        resolved_steam_id = None
+        steam_username = None
+
+        try:
+            if customurl:
+                await interaction.followup.send(f"Resolving Steam custom URL: `{customurl}`...", ephemeral=True)
+                resolved_steam_id = await resolve_vanity_url(customurl)
+                if not resolved_steam_id:
+                    embed = discord.Embed(
+                        title="❌ Steam Link Failed",
+                        description=f"Could not resolve custom URL `{customurl}`. Please check the URL and try again, or use your 64-bit Steam ID directly.",
+                        color=discord.Color.red()
+                    )
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                    return
+                else:
+                    await interaction.followup.send(f"Custom URL resolved to Steam ID: `{resolved_steam_id}`", ephemeral=True)
+                    # For vanity URLs, we don't get a username directly, so we'll use a placeholder or fetch later if needed.
+                    # For now, we'll just store the ID.
+                    steam_username = customurl # Use customURL as a temporary username for display if needed
+            elif steam_id:
+                if not steam_id.isdigit() or len(steam_id) != 17:
+                    embed = discord.Embed(
+                        title="❌ Invalid Steam ID",
+                        description="A 64-bit Steam ID must be a 17-digit number. Please check your input.",
+                        color=discord.Color.red()
+                    )
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                    return
+                resolved_steam_id = steam_id
+                # No username from raw Steam ID, can fetch later if needed.
+                steam_username = f"SteamID:{steam_id}" # Placeholder
+            else:
+                embed = discord.Embed(
+                    title="ℹ️ Missing Input",
+                    description="Please provide either a `customURL` or a `steam_id` to link your Steam account.",
+                    color=discord.Color.blue()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+                return
+
+            if resolved_steam_id:
+                # Validate the Steam ID against existing links
+                validation_result = await self.db.validate_steam_id_link(resolved_steam_id, user_id)
+                if not validation_result['valid']:
+                    embed = discord.Embed(
+                        title="❌ Steam Link Failed",
+                        description=validation_result['error'],
+                        color=discord.Color.red()
+                    )
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                    return
+
+                # Update user settings with the Steam ID
+                success = await self.db.update_user_settings(
+                    user_id=user_id,
+                    username=username,
+                    user_display_name=user_display_name,
+                    steam_id=resolved_steam_id,
+                    steam_username=steam_username # Store the resolved username or placeholder
+                )
+
+                if success:
+                    embed = discord.Embed(
+                        title="✅ Steam Account Linked!",
+                        description=f"Your Steam account (`{resolved_steam_id}`) has been successfully linked to your Discord profile.",
+                        color=discord.Color.green()
+                    )
+                    embed.set_footer(text="You can view your linked Steam ID with /my_settings")
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                else:
+                    embed = discord.Embed(
+                        title="❌ Steam Link Failed",
+                        description="Failed to link Steam account due to a database error. Please try again later.",
+                        color=discord.Color.red()
+                    )
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+            else:
+                embed = discord.Embed(
+                    title="❌ Steam Link Failed",
+                    description="Could not determine a valid Steam ID from your input. Please ensure your custom URL is correct or provide a valid 64-bit Steam ID.",
+                    color=discord.Color.red()
+                )
+                await interaction.followup.send(embed=embed, ephemeral=True)
+
+        except Exception as e:
+            print(f"Error linking Steam account for user {user_id}: {e}")
+            embed = discord.Embed(
+                title="❌ An Unexpected Error Occurred",
+                description="An error occurred while trying to link your Steam account. Please try again later.",
+                color=discord.Color.red()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
 async def setup(bot):
     await bot.add_cog(UserSettings(bot))

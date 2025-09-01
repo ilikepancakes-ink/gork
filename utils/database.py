@@ -70,6 +70,9 @@ class MessageDatabase:
                     user_display_name TEXT,
                     nsfw_mode BOOLEAN DEFAULT FALSE,
                     content_filter_level TEXT DEFAULT 'strict',
+                    steam_id TEXT,
+                    steam_username TEXT,
+                    steam_linked_at DATETIME,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
@@ -353,6 +356,7 @@ class MessageDatabase:
             async with aiosqlite.connect(self.db_path) as db:
                 cursor = await db.execute("""
                     SELECT user_id, username, user_display_name, nsfw_mode, content_filter_level,
+                           steam_id, steam_username, steam_linked_at,
                            created_at, updated_at
                     FROM user_settings
                     WHERE user_id = ?
@@ -367,8 +371,11 @@ class MessageDatabase:
                         'user_display_name': result[2],
                         'nsfw_mode': bool(result[3]),
                         'content_filter_level': result[4],
-                        'created_at': result[5],
-                        'updated_at': result[6]
+                        'steam_id': result[5],
+                        'steam_username': result[6],
+                        'steam_linked_at': result[7],
+                        'created_at': result[8],
+                        'updated_at': result[9]
                     }
                 else:
                     # Create default settings for new user
@@ -378,6 +385,9 @@ class MessageDatabase:
                         'user_display_name': None,
                         'nsfw_mode': False,
                         'content_filter_level': 'strict',
+                        'steam_id': None,
+                        'steam_username': None,
+                        'steam_linked_at': None,
                         'created_at': datetime.utcnow().isoformat(),
                         'updated_at': datetime.utcnow().isoformat()
                     }
@@ -392,12 +402,16 @@ class MessageDatabase:
                 'user_display_name': None,
                 'nsfw_mode': False,
                 'content_filter_level': 'strict',
+                'steam_id': None,
+                'steam_username': None,
+                'steam_linked_at': None,
                 'created_at': datetime.utcnow().isoformat(),
                 'updated_at': datetime.utcnow().isoformat()
             }
 
     async def update_user_settings(self, user_id: str, username: str = None, user_display_name: str = None,
-                                 nsfw_mode: bool = None, content_filter_level: str = None) -> bool:
+                                 nsfw_mode: bool = None, content_filter_level: str = None,
+                                 steam_id: str = None, steam_username: str = None) -> bool:
         """Update user settings, creating the record if it doesn't exist"""
         if not self.initialized:
             await self.initialize()
@@ -431,6 +445,17 @@ class MessageDatabase:
                         update_fields.append("content_filter_level = ?")
                         update_values.append(content_filter_level)
 
+                    if steam_id is not None:
+                        update_fields.append("steam_id = ?")
+                        update_values.append(steam_id)
+                        # Automatically set steam_linked_at when steam_id is updated
+                        update_fields.append("steam_linked_at = ?")
+                        update_values.append(current_time)
+
+                    if steam_username is not None:
+                        update_fields.append("steam_username = ?")
+                        update_values.append(steam_username)
+
                     if update_fields:
                         update_fields.append("updated_at = ?")
                         update_values.append(current_time)
@@ -442,11 +467,14 @@ class MessageDatabase:
                     # Insert new settings
                     await db.execute("""
                         INSERT INTO user_settings (user_id, username, user_display_name, nsfw_mode,
-                                                 content_filter_level, created_at, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                                                 content_filter_level, steam_id, steam_username,
+                                                 steam_linked_at, created_at, updated_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (user_id, username, user_display_name,
                          nsfw_mode if nsfw_mode is not None else False,
                          content_filter_level if content_filter_level is not None else 'strict',
+                         steam_id, steam_username,
+                         current_time if steam_id else None,
                          current_time, current_time))
 
                 await db.commit()
@@ -729,3 +757,63 @@ class MessageDatabase:
         except Exception as e:
             print(f"❌ Error deleting user settings for {user_id}: {e}")
             return False
+
+    async def validate_steam_id_link(self, steam_id: str, user_id: str) -> dict:
+        """
+        Validate Steam ID linking with checks for:
+        1. Steam ID format
+        2. Uniqueness across users
+        3. Preventing multiple links to the same Steam ID
+
+        Returns a dictionary with validation results
+        """
+        if not self.initialized:
+            await self.initialize()
+
+        try:
+            # Basic Steam ID validation (64-bit Steam ID is typically a 17-digit number)
+            if not steam_id or not steam_id.isdigit() or len(steam_id) != 17:
+                return {
+                    'valid': False,
+                    'error': 'Invalid Steam ID format. Must be a 17-digit number.'
+                }
+
+            async with aiosqlite.connect(self.db_path) as db:
+                # Check if this Steam ID is already linked to another user
+                cursor = await db.execute("""
+                    SELECT user_id FROM user_settings 
+                    WHERE steam_id = ? AND user_id != ?
+                """, (steam_id, user_id))
+                existing_link = await cursor.fetchone()
+
+                if existing_link:
+                    return {
+                        'valid': False,
+                        'error': 'This Steam ID is already linked to another user.'
+                    }
+
+                # Check if this user already has a different Steam ID linked
+                cursor = await db.execute("""
+                    SELECT steam_id FROM user_settings 
+                    WHERE user_id = ? AND steam_id IS NOT NULL AND steam_id != ?
+                """, (user_id, steam_id))
+                current_steam_id = await cursor.fetchone()
+
+                if current_steam_id and current_steam_id[0] != steam_id:
+                    return {
+                        'valid': False,
+                        'error': 'User already has a different Steam ID linked.'
+                    }
+
+                # If all checks pass
+                return {
+                    'valid': True,
+                    'message': 'Steam ID is valid and can be linked.'
+                }
+
+        except Exception as e:
+            print(f"❌ Error validating Steam ID: {e}")
+            return {
+                'valid': False,
+                'error': 'An unexpected error occurred during Steam ID validation.'
+            }
