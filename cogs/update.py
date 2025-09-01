@@ -161,7 +161,8 @@ class Update(commands.Cog):
                 'Status': 'status',
                 'Weather': 'weather',
                 'HwInfo': 'hwinfo',
-                'Update': 'update'
+                'Update': 'update',
+                'SteamUserTool': 'steam_tool'
             }
 
             # Get all available cog files
