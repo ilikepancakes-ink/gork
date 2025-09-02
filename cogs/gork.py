@@ -13,6 +13,7 @@ import tempfile
 import speech_recognition as sr
 from pydub import AudioSegment
 from bs4 import BeautifulSoup
+from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound
 
 # Optional imports
 try:
@@ -105,6 +106,7 @@ class Gork(commands.Cog):
         self.spotify_client_secret = os.getenv("SPOTIFY_CLIENT_SECRET")
         self.spotify_client = None
         self.spotify_url_pattern = re.compile(r"https://open.spotify.com/(track|album|artist|playlist)/([a-zA-Z0-9]+)")
+        self.youtube_url_pattern = re.compile(r"(?:https?://)?(?:www\.)?(?:youtube\.com/watch\?v=|youtu\.be/)([a-zA-Z0-9_-]{11})")
 
 
         if not self.openrouter_api_key:
@@ -992,6 +994,17 @@ class Gork(commands.Cog):
             print(f"Error fetching Spotify details for {item_type} {item_id}: {e}")
             return None
 
+    async def get_youtube_transcript(self, video_id: str) -> str:
+        """Fetch YouTube video transcript."""
+        try:
+            transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+            transcript_text = " ".join([item["text"] for item in transcript_list])
+            return transcript_text
+        except NoTranscriptFound:
+            return "No transcript found for this video."
+        except Exception as e:
+            return f"Error fetching transcript: {e}"
+
     async def get_weather(self, location: str) -> str:
         """Get weather information using the Weather cog"""
         # Get the weather cog
@@ -1287,6 +1300,30 @@ Recent messages (most recent last):"""
             return
 
         if is_mentioned or is_dm:
+            # YouTube URL detection and summarization
+            youtube_match = self.youtube_url_pattern.search(message.content)
+            if youtube_match and ("summarize" in message.content.lower() or "summary" in message.content.lower()):
+                video_id = youtube_match.group(1)
+                print(f"DEBUG: Detected YouTube URL with summarize request: video_id={video_id}")
+                try:
+                    await message.channel.send("Fetching transcript and summarizing, please wait...")
+                    transcript = await self.get_youtube_transcript(video_id)
+                    if "No transcript found" in transcript or "Error fetching transcript" in transcript:
+                        await message.channel.send(transcript)
+                    else:
+                        summary_prompt = f"Please summarize the following YouTube video transcript:\n\n{transcript}"
+                        summary_messages = [
+                            {"role": "system", "content": "You are a helpful AI assistant that summarizes YouTube video transcripts concisely."},
+                            {"role": "user", "content": summary_prompt}
+                        ]
+                        summary = await self.call_ai(summary_messages, max_tokens=1000)
+                        await message.channel.send(f"Here's a summary of the video:\n\n{summary}")
+                    return # Stop further processing if a YouTube summary was provided
+                except Exception as e:
+                    print(f"Error summarizing YouTube video: {e}")
+                    await message.channel.send(f"❌ An error occurred while summarizing the YouTube video: {e}")
+                    return
+
             # Spotify URL detection and embed creation
             if self.spotify_client:
                 match = self.spotify_url_pattern.search(message.content)
