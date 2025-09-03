@@ -1000,7 +1000,7 @@ class Gork(commands.Cog):
             # Instantiate YouTubeTranscriptApi
             ytt_api = YouTubeTranscriptApi()
             transcript_list = ytt_api.fetch(video_id)
-            transcript_text = " ".join([item["text"] for item in transcript_list])
+            transcript_text = " ".join([item.text for item in transcript_list])
             return transcript_text
         except NoTranscriptFound:
             return "No transcript found for this video."
