@@ -1323,7 +1323,7 @@ Recent messages (most recent last):"""
                     else:
                         summary_prompt = f"Please summarize the following YouTube video transcript, including relevant timestamps in the format [HH:MM:SS] where appropriate. The transcript is formatted as [HH:MM:SS] text:\n\n{transcript}"
                         summary_messages = [
-                            {"role": "system", "content": "You are a helpful AI assistant that summarizes YouTube video transcripts concisely, always including relevant timestamps from the provided transcript in the format [HH:MM:SS]."},
+                            {"role": "system", "content": "You are a helpful AI assistant that summarizes YouTube video transcripts concisely, always including relevant timestamps from the provided transcript in the format [HH:MM:SS]. messages Must be 2000 or fewer in length."},
                             {"role": "user", "content": summary_prompt}
                         ]
                         summary = await self.call_ai(summary_messages, max_tokens=1000)
