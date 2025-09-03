@@ -997,7 +997,9 @@ class Gork(commands.Cog):
     async def get_youtube_transcript(self, video_id: str) -> str:
         """Fetch YouTube video transcript."""
         try:
-            transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+            # Instantiate YouTubeTranscriptApi
+            ytt_api = YouTubeTranscriptApi()
+            transcript_list = ytt_api.fetch(video_id)
             transcript_text = " ".join([item["text"] for item in transcript_list])
             return transcript_text
         except NoTranscriptFound:
