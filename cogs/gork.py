@@ -1321,9 +1321,16 @@ Recent messages (most recent last):"""
                     if "No transcript found" in transcript or "Error fetching transcript" in transcript:
                         await message.channel.send(transcript)
                     else:
-                        summary_prompt = f"Please summarize the following YouTube video transcript, including relevant timestamps in the format [HH:MM:SS] where appropriate. The transcript is formatted as [HH:MM:SS] text:\n\n{transcript}"
+                        # Truncate transcript if too long for AI input
+                        max_transcript_length = 1800 # Adjust as needed based on AI model limits
+                        if len(transcript) > max_transcript_length:
+                            transcript_for_ai = transcript[:max_transcript_length] + "\n... (transcript truncated due to length)"
+                        else:
+                            transcript_for_ai = transcript
+
+                        summary_prompt = f"Please summarize the following YouTube video transcript, including relevant timestamps in the format [HH:MM:SS] where appropriate. The transcript is formatted as [HH:MM:SS] text:\n\n{transcript_for_ai}"
                         summary_messages = [
-                            {"role": "system", "content": "You are a helpful AI assistant that summarizes YouTube video transcripts concisely, always including relevant timestamps from the provided transcript in the format [HH:MM:SS]. messages Must be 2000 or fewer in length."},
+                            {"role": "system", "content": "You are a helpful AI assistant that summarizes YouTube video transcripts concisely, always including relevant timestamps from the provided transcript in the format [HH:MM:SS]."},
                             {"role": "user", "content": summary_prompt}
                         ]
                         summary = await self.call_ai(summary_messages, max_tokens=1000)
