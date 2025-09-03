@@ -13,7 +13,7 @@ import tempfile
 import speech_recognition as sr
 from pydub import AudioSegment
 from bs4 import BeautifulSoup
-from youtube_transcript_api import get_transcript, NoTranscriptFound
+from youtube_transcript_api import YouTubeTranscriptApi, NoTranscriptFound
 
 # Optional imports
 try:
@@ -997,7 +997,7 @@ class Gork(commands.Cog):
     async def get_youtube_transcript(self, video_id: str) -> str:
         """Fetch YouTube video transcript."""
         try:
-            transcript_list = get_transcript(video_id)
+            transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
             transcript_text = " ".join([item["text"] for item in transcript_list])
             return transcript_text
         except NoTranscriptFound:
