@@ -104,6 +104,18 @@ class MessageDatabase:
                 )
             """)
 
+            # Create user_summaries table
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS user_summaries (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    user_id TEXT NOT NULL UNIQUE,
+                    summary_text TEXT NOT NULL,
+                    message_count_at_update INTEGER NOT NULL,
+                    last_updated DATETIME DEFAULT CURRENT_TIMESTAMP,
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+
             # Create indexes for better performance
             await db.execute("CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages (user_id)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages (timestamp)")
@@ -817,3 +829,105 @@ class MessageDatabase:
                 'valid': False,
                 'error': 'An unexpected error occurred during Steam ID validation.'
             }
+
+    async def get_user_summary(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """Get a user's summary if it exists"""
+        if not self.initialized:
+            await self.initialize()
+
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT user_id, summary_text, message_count_at_update,
+                           last_updated, created_at
+                    FROM user_summaries
+                    WHERE user_id = ?
+                """, (user_id,))
+
+                result = await cursor.fetchone()
+
+                if result:
+                    return {
+                        'user_id': result[0],
+                        'summary_text': result[1],
+                        'message_count_at_update': result[2],
+                        'last_updated': result[3],
+                        'created_at': result[4]
+                    }
+                return None
+
+        except Exception as e:
+            print(f"❌ Error getting user summary: {e}")
+            return None
+
+    async def update_user_summary(self, user_id: str, summary_text: str, message_count: int) -> bool:
+        """Update or create a user's summary"""
+        if not self.initialized:
+            await self.initialize()
+
+        try:
+            current_time = datetime.utcnow().isoformat()
+
+            async with aiosqlite.connect(self.db_path) as db:
+                # Check if summary exists
+                cursor = await db.execute("SELECT user_id FROM user_summaries WHERE user_id = ?", (user_id,))
+                exists = await cursor.fetchone()
+
+                if exists:
+                    # Update existing summary
+                    await db.execute("""
+                        UPDATE user_summaries
+                        SET summary_text = ?, message_count_at_update = ?, last_updated = ?
+                        WHERE user_id = ?
+                    """, (summary_text, message_count, current_time, user_id))
+                else:
+                    # Create new summary
+                    await db.execute("""
+                        INSERT INTO user_summaries (user_id, summary_text, message_count_at_update,
+                                                  last_updated, created_at)
+                        VALUES (?, ?, ?, ?, ?)
+                    """, (user_id, summary_text, message_count, current_time, current_time))
+
+                await db.commit()
+                return True
+
+        except Exception as e:
+            print(f"❌ Error updating user summary: {e}")
+            return False
+
+    async def get_message_count_for_user(self, user_id: str) -> int:
+        """Get the total number of messages for a user"""
+        if not self.initialized:
+            await self.initialize()
+
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("SELECT COUNT(*) FROM messages WHERE user_id = ?", (user_id,))
+                result = await cursor.fetchone()
+                return result[0] if result else 0
+        except Exception as e:
+            print(f"❌ Error getting message count for user: {e}")
+            return 0
+
+    async def get_recent_user_messages_for_summary(self, user_id: str, limit: int = 10) -> List[str]:
+        """Get recent messages for a user to generate summary"""
+        if not self.initialized:
+            await self.initialize()
+
+        try:
+            async with aiosqlite.connect(self.db_path) as db:
+                cursor = await db.execute("""
+                    SELECT message_content
+                    FROM messages
+                    WHERE user_id = ? AND message_type = 'user' AND message_content != ''
+                    ORDER BY timestamp DESC
+                    LIMIT ?
+                """, (user_id, limit))
+
+                results = await cursor.fetchall()
+                # Reverse to get chronological order for better summary generation
+                return [row[0] for row in reversed(results)]
+
+        except Exception as e:
+            print(f"❌ Error getting recent messages for summary: {e}")
+            return []
