@@ -594,33 +594,34 @@ class Gork(commands.Cog):
                         if not organic_results:
                             return f"🔍 No search results found for: {query}"
 
-                    # Format search results
-                    results = []
-                    for i, item in enumerate(organic_results[:num_results], 1):
-                        title = item.get('title', 'No title')
-                        link = item.get('link', '')
-                        snippet = item.get('snippet', 'No description available')
+                        # Format search results
+                        results = []
+                        for i, item in enumerate(organic_results[:num_results], 1):
+                            title = item.get('title', 'No title')
+                            link = item.get('link', '')
+                            snippet = item.get('snippet', 'No description available')
 
-                        # Truncate snippet if too long
-                        if len(snippet) > 150:
-                            snippet = snippet[:150] + "..."
+                            # Truncate snippet if too long
+                            if len(snippet) > 150:
+                                snippet = snippet[:150] + "..."
 
-                        results.append(f"**{i}. {title}**\n{snippet}")
+                            results.append(f"**{i}. {title}**\n{snippet}")
 
-                    # Get search information
-                    search_info = data.get('search_information', {})
-                    total_results = search_info.get('total_results', 'Unknown')
-                    search_time = search_info.get('time_taken_displayed', 'Unknown')
+                        # Get search information
+                        search_info = data.get('search_information', {})
+                        total_results = search_info.get('total_results', 'Unknown')
+                        search_time = search_info.get('time_taken_displayed', 'Unknown')
 
-                    formatted_results = f"🔍 **Web Search Results for:** {query}\n"
-                    formatted_results += f"📊 Found {total_results} results in {search_time}\n\n"
-                    formatted_results += "\n\n".join(results)
+                        formatted_results = f"🔍 **Web Search Results for:** {query}\n"
+                        formatted_results += f"📊 Found {total_results} results in {search_time}\n\n"
+                        formatted_results += "\n\n".join(results)
 
-                    return formatted_results
+                        return formatted_results
 
                     else:
                         error_text = await response.text()
                         return f"❌ SearchAPI.io error (status {response.status}): {error_text}"
+
 
 
         except Exception as e:
