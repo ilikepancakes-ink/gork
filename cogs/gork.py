@@ -1480,8 +1480,9 @@ Summary:"""
                 try:
                     if guild_settings.get('random_messages_enabled', False):
                         
+
                         if random.randint(1, 10) <= 4:
-                            print(f"Random message trigger activated in {message.guild.name} 
+                            print(f"Random message trigger activated in {message.guild.name}")
 
                             
                             asyncio.create_task(message_logger.log_user_message(message))
