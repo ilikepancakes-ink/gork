@@ -143,6 +143,145 @@ class Gork(commands.Cog):
         else:
             self.whisper_model = None
 
+    async def extract_and_execute_tools(self, ai_response: str, channel_or_interaction, context: str) -> str:
+        """Extract and execute tool calls from AI response using robust regex patterns"""
+        import re
+
+        # Define robust patterns for tool detection
+        tool_patterns = {
+            'EXECUTE_COMMAND': re.compile(r'\*\*EXECUTE_COMMAND:\*\*(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
+            'GET_WEATHER': re.compile(r'\*\*GET_WEATHER:\*\*(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
+            'WEB_SEARCH': re.compile(r'\*\*WEB_SEARCH:\*\*(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
+            'VISIT_WEBSITE': re.compile(r'\*\*VISIT_WEBSITE:\*\*(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
+            'STEAM_SEARCH': re.compile(r'\*?STEAM_SEARCH:?\*?(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
+            'SPOTIFY_SEARCH': re.compile(r'\*\*SPOTIFY_SEARCH:\*\*(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
+            'STEAM_USER': re.compile(r'\*\*STEAM_USER:\*\*(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
+        }
+
+        processed_response = ai_response
+
+        # Process tools in a specific order to avoid conflicts
+        tool_order = ['STEAM_USER', 'SPOTIFY_SEARCH', 'STEAM_SEARCH', 'WEB_SEARCH', 'VISIT_WEBSITE', 'GET_WEATHER', 'EXECUTE_COMMAND']
+
+        for tool_name in tool_order:
+            pattern = tool_patterns[tool_name]
+            matches = list(pattern.finditer(processed_response))
+
+            for match in matches:
+                tool_call_text = match.group(0).strip()
+                arg_text = match.group(1).strip() if match.groups() else ""
+                print(f"DEBUG: Detected tool call - {tool_name}: '{arg_text}'")
+
+                try:
+                    # Execute the tool and get replacement content
+                    if tool_name == 'EXECUTE_COMMAND':
+                        result = await self.execute_safe_command(arg_text)
+                        if result.startswith('❌'):
+                            # For failed commands, keep the error message but don't process further
+                            processed_response = processed_response.replace(tool_call_text, result, 1)
+                        else:
+                            # For successful commands, try to get AI summary
+                            summary_messages = [
+                                {"role": "system", "content": "You are Gork, a helpful AI assistant. Analyze the following command output and provide a concise, user-friendly summary. Highlight key details and format it nicely for Discord."},
+                                {"role": "user", "content": f"Command: {arg_text}\nOutput:\n{result}"}
+                            ]
+                            summary = await self.call_ai(summary_messages, max_tokens=800)
+                            processed_response = processed_response.replace(tool_call_text, summary, 1)
+
+                    elif tool_name == 'GET_WEATHER':
+                        result = await self.get_weather(arg_text)
+                        processed_response = processed_response.replace(tool_call_text, result, 1)
+
+                    elif tool_name == 'WEB_SEARCH':
+                        result = await self.web_search(arg_text)
+                        processed_response = processed_response.replace(tool_call_text, result, 1)
+
+                    elif tool_name == 'VISIT_WEBSITE':
+                        result = await self.visit_website(arg_text)
+                        if result.startswith('❌'):
+                            processed_response = processed_response.replace(tool_call_text, result, 1)
+                        else:
+                            summary_messages = [
+                                {"role": "system", "content": "You are Gork, a helpful AI assistant. Analyze the following website content and provide a concise, user-friendly summary. Highlight key information and format it nicely for Discord."},
+                                {"role": "user", "content": f"Website: {arg_text}\nContent:\n{result}"}
+                            ]
+                            summary = await self.call_ai(summary_messages, max_tokens=800)
+                            processed_response = processed_response.replace(tool_call_text, summary, 1)
+
+                    elif tool_name == 'STEAM_SEARCH':
+                        embed = await self.search_steam_game(arg_text)
+                        if context == "channel":
+                            await channel_or_interaction.send(embed=embed)
+                        else:  # interaction
+                            await channel_or_interaction.followup.send(embed=embed)
+                        # Remove the tool call from response
+                        processed_response = processed_response.replace(tool_call_text, "", 1).strip()
+
+                    elif tool_name == 'SPOTIFY_SEARCH':
+                        embed = await self.search_spotify_song(arg_text)
+                        if context == "channel":
+                            await channel_or_interaction.send(embed=embed)
+                        else:  # interaction
+                            await channel_or_interaction.followup.send(embed=embed)
+                        # Remove the tool call from response
+                        processed_response = processed_response.replace(tool_call_text, "", 1).strip()
+
+                    elif tool_name == 'STEAM_USER':
+                        steam_user_cog = self.bot.get_cog('SteamUserTool')
+                        if steam_user_cog:
+                            # Parse function call
+                            try:
+                                match = re.match(r"(\w+)\((.*)\)", arg_text.strip())
+                                if match:
+                                    func_name = match.group(1)
+                                    args_str = match.group(2)
+
+                                    kwargs = {}
+                                    if args_str:
+                                        arg_pairs = [arg.strip() for arg in args_str.split(',')]
+                                        for arg_pair in arg_pairs:
+                                            if '=' in arg_pair:
+                                                key, value = arg_pair.split('=', 1)
+                                                kwargs[key.strip()] = value.strip().strip("'\"")
+                                            else:
+                                                if func_name == "resolve_steam_vanity_url":
+                                                    kwargs['vanity_url'] = arg_pair.strip().strip("'\"")
+                                                elif func_name in ["get_steam_id", "get_steam_profile_summary", "get_user_owned_games"]:
+                                                    kwargs['discord_user_id'] = arg_pair.strip().strip("'\"")
+
+                                    if hasattr(steam_user_cog, func_name):
+                                        tool_func = getattr(steam_user_cog, func_name)
+                                        tool_output = await tool_func(**kwargs)
+
+                                        if tool_output is None:
+                                            formatted_output = f"Steam User Tool: {func_name} returned no data."
+                                        elif isinstance(tool_output, dict):
+                                            formatted_output = f"Steam User Tool: {func_name} result:\n```json\n{json.dumps(tool_output, indent=2)}\n```"
+                                        elif isinstance(tool_output, list):
+                                            formatted_output = f"Steam User Tool: {func_name} result:\n```json\n{json.dumps(tool_output, indent=2)}\n```"
+                                        else:
+                                            formatted_output = f"Steam User Tool: {func_name} result: {tool_output}"
+                                    else:
+                                        formatted_output = f"❌ Steam User Tool: Function '{func_name}' not found."
+                                else:
+                                    formatted_output = f"❌ Steam User Tool: Could not parse tool call: {arg_text}"
+                            except Exception as e:
+                                formatted_output = f"❌ Error executing Steam User Tool '{arg_text}': {str(e)}"
+                        else:
+                            formatted_output = "❌ Steam User Tool cog is not loaded."
+
+                        processed_response = processed_response.replace(tool_call_text, formatted_output, 1)
+
+                except Exception as e:
+                    print(f"Error processing tool {tool_name} with arg '{arg_text}': {e}")
+                    # Replace with error message
+                    processed_response = processed_response.replace(tool_call_text, f"❌ Error executing {tool_name}: {str(e)}", 1)
+
+        # Clean up any remaining empty lines or extra whitespace
+        processed_response = re.sub(r'\n{3,}', '\n\n', processed_response).strip()
+
+        return processed_response
+
     def get_message_logger(self):
         if self.message_logger is None:
             self.message_logger = self.bot.get_cog('MessageLogger')
@@ -1653,244 +1792,8 @@ Summary:"""
                                             ai_response = ""
                                             break
 
-                    # Check if the AI wants to execute a command or perform a Google search
-                    if "**EXECUTE_COMMAND:**" in ai_response:
-                        # Extract command from response
-                        lines = ai_response.split('\n')
-                        command_line = None
-                        for line in lines:
-                            if "**EXECUTE_COMMAND:**" in line:
-                                command_line = line
-                                break
-
-                        if command_line:
-                            # Extract command name
-                            command_name = command_line.split("**EXECUTE_COMMAND:**")[1].strip()
-
-                            # Execute the command
-                            command_output = await self.execute_safe_command(command_name)
-
-                            # Always process the output through the AI model for summarization
-                            if not command_output.startswith('❌'):
-                                # Create a new message to ask AI to summarize the command output
-                                summary_messages = [
-                                    {
-                                        "role": "system",
-                                        "content": "You are Gork, a helpful AI assistant. Analyze the following command output and provide a concise, user-friendly summary. Highlight key details and format it nicely for Discord."
-                                    },
-                                    {
-                                        "role": "user",
-                                        "content": f"Command: {command_name}\nOutput:\n{command_output}"
-                                    }
-                                ]
-
-                                # Get AI summary
-                                summary_response = await self.call_ai(summary_messages, max_tokens=800)
-                                ai_response = ai_response.replace(command_line, summary_response, 1)
-                            else:
-                                # If command failed, just replace with the error message
-                                ai_response = ai_response.replace(command_line, command_output, 1)
-
-                    elif "**GET_WEATHER:**" in ai_response:
-                        # Extract location from response
-                        lines = ai_response.split('\n')
-                        weather_line = None
-                        for line in lines:
-                            if "**GET_WEATHER:**" in line:
-                                weather_line = line
-                                break
-
-                        if weather_line:
-                            # Extract location
-                            location = weather_line.split("**GET_WEATHER:**")[1].strip()
-
-                            # Get weather data
-                            weather_results = await self.get_weather(location)
-
-                            # Replace only the specific weather instruction line with the results
-                            ai_response = ai_response.replace(weather_line, weather_results, 1)
-
-                    elif "**WEB_SEARCH:**" in ai_response:
-                        # Extract search query from response
-                        lines = ai_response.split('\n')
-                        search_line = None
-                        for line in lines:
-                            if "**WEB_SEARCH:**" in line:
-                                search_line = line
-                                break
-
-                        if search_line:
-                            # Extract search query
-                            search_query = search_line.split("**WEB_SEARCH:**")[1].strip()
-
-                            # Perform web search
-                            search_results = await self.web_search(search_query)
-
-                            # Replace only the specific search instruction line with the results
-                            ai_response = ai_response.replace(search_line, search_results, 1)
-
-                    elif "**VISIT_WEBSITE:**" in ai_response:
-                        # Extract website URL from response
-                        lines = ai_response.split('\n')
-                        visit_line = None
-                        for line in lines:
-                            if "**VISIT_WEBSITE:**" in line:
-                                visit_line = line
-                                break
-
-                        if visit_line:
-                            # Extract website URL
-                            website_url = visit_line.split("**VISIT_WEBSITE:**")[1].strip()
-
-                            # Visit the website
-                            website_content = await self.visit_website(website_url)
-
-                            # Always process the content through the AI model for summarization
-                            if not website_content.startswith('❌'):
-                                # Create a new message to ask AI to summarize the website content
-                                summary_messages = [
-                                    {
-                                        "role": "system",
-                                        "content": "You are Gork, a helpful AI assistant. Analyze the following website content and provide a concise, user-friendly summary. Highlight key information and format it nicely for Discord."
-                                    },
-                                    {
-                                        "role": "user",
-                                        "content": f"Website: {website_url}\nContent:\n{website_content}"
-                                    }
-                                ]
-
-                                # Get AI summary
-                                summary_response = await self.call_ai(summary_messages, max_tokens=800)
-                                ai_response = ai_response.replace(visit_line, summary_response, 1)
-                            else:
-                                # If website visit failed, just replace with the error message
-                                ai_response = ai_response.replace(visit_line, website_content, 1)
-
-                    elif "STEAM_SEARCH:" in ai_response:
-                        print(f"DEBUG: Steam search detected in AI response: {ai_response}")
-                        # Extract game name from response
-                        lines = ai_response.split('\n')
-                        steam_line = None
-                        for line in lines:
-                            if "STEAM_SEARCH:" in line:
-                                steam_line = line
-                                break
-
-                        if steam_line:
-                            # Extract game name
-                            game_name = steam_line.split("STEAM_SEARCH:")[1].strip()
-                            print(f"DEBUG: Extracted game name: '{game_name}'")
-
-                            # Search for the game on Steam
-                            steam_embed = await self.search_steam_game(game_name)
-
-                            # Send the embed directly and remove the steam instruction from AI response
-                            try:
-                                await message.channel.send(embed=steam_embed)
-                            except Exception as e:
-                                print(f"Error sending Steam embed: {e}")
-                            ai_response = ai_response.replace(steam_line, "", 1).strip()
-
-                            # If AI response is now empty, set a default message
-                            if not ai_response:
-                                ai_response = f"Here's the Steam information for **{game_name}**:"
-
-                    elif "**SPOTIFY_SEARCH:**" in ai_response:
-                        print(f"DEBUG: Spotify search detected in AI response: {ai_response}")
-                        # Extract song/artist name from response
-                        lines = ai_response.split('\n')
-                        spotify_line = None
-                        for line in lines:
-                            if "**SPOTIFY_SEARCH:**" in line:
-                                spotify_line = line
-                                break
-
-                        if spotify_line:
-                            # Extract song/artist name
-                            query = spotify_line.split("**SPOTIFY_SEARCH:**")[1].strip()
-                            print(f"DEBUG: Extracted Spotify query: '{query}'")
-
-                            # Search for the song on Spotify
-                            spotify_embed = await self.search_spotify_song(query)
-                            print(f"DEBUG: Spotify embed created: {type(spotify_embed)}")
-
-                            # Send the embed directly and remove the spotify instruction from AI response
-                            await message.channel.send(embed=spotify_embed)
-                            print(f"DEBUG: Spotify embed sent to channel")
-                            ai_response = ai_response.replace(spotify_line, "", 1).strip()
-
-                            # If AI response is now empty, set a default message
-                            if not ai_response:
-                                ai_response = f"Here's the Spotify information for **{query}**:"
-
-                    elif "**STEAM_USER:**" in ai_response:
-                        print(f"DEBUG: Steam User tool detected in AI response: {ai_response}")
-                        lines = ai_response.split('\n')
-                        steam_user_line = None
-                        for line in lines:
-                            if "**STEAM_USER:**" in line:
-                                steam_user_line = line
-                                break
-
-                        if steam_user_line:
-                            # Extract the full tool call string
-                            tool_call_str = steam_user_line.split("**STEAM_USER:**")[1].strip()
-                            print(f"DEBUG: Extracted Steam User tool call: '{tool_call_str}'")
-
-                            steam_user_cog = self.bot.get_cog('SteamUserTool')
-                            if steam_user_cog:
-                                try:
-                                    # Parse the function name and arguments
-                                    match = re.match(r"(\w+)\((.*)\)", tool_call_str)
-                                    if match:
-                                        func_name = match.group(1)
-                                        args_str = match.group(2)
-
-                                        # Safely evaluate arguments (assuming simple key=value pairs or single string)
-                                        # This is a simplified parser; a more robust one might be needed for complex args
-                                        kwargs = {}
-                                        if args_str:
-                                            # Split by comma, then by equals for key-value pairs
-                                            arg_pairs = [arg.strip() for arg in args_str.split(',')]
-                                            for arg_pair in arg_pairs:
-                                                if '=' in arg_pair:
-                                                    key, value = arg_pair.split('=', 1)
-                                                    kwargs[key.strip()] = value.strip().strip("'\"") # Remove quotes
-                                                else:
-                                                    # Assume it's a single positional argument if no key
-                                                    # This is a simplification; real tools might need more complex parsing
-                                                    if func_name == "resolve_steam_vanity_url":
-                                                        kwargs['vanity_url'] = arg_pair.strip().strip("'\"")
-                                                    elif func_name in ["get_steam_id", "get_steam_profile_summary", "get_user_owned_games"]:
-                                                        kwargs['discord_user_id'] = arg_pair.strip().strip("'\"")
-
-                                        print(f"DEBUG: Calling SteamUserTool function: {func_name} with args: {kwargs}")
-
-                                        # Dynamically call the method
-                                        if hasattr(steam_user_cog, func_name):
-                                            tool_func = getattr(steam_user_cog, func_name)
-                                            tool_output = await tool_func(**kwargs)
-
-                                            # Format output for AI response
-                                            if tool_output is None:
-                                                formatted_output = f"Steam User Tool: {func_name} returned no data."
-                                            elif isinstance(tool_output, dict):
-                                                formatted_output = f"Steam User Tool: {func_name} result:\n```json\n{json.dumps(tool_output, indent=2)}\n```"
-                                            elif isinstance(tool_output, list):
-                                                formatted_output = f"Steam User Tool: {func_name} result:\n```json\n{json.dumps(tool_output, indent=2)}\n```"
-                                            else:
-                                                formatted_output = f"Steam User Tool: {func_name} result: {tool_output}"
-                                        else:
-                                            formatted_output = f"❌ Steam User Tool: Function '{func_name}' not found."
-                                    else:
-                                        formatted_output = f"❌ Steam User Tool: Could not parse tool call: {tool_call_str}"
-
-                                except Exception as e:
-                                    formatted_output = f"❌ Error executing Steam User Tool '{tool_call_str}': {str(e)}"
-                            else:
-                                formatted_output = "❌ Steam User Tool cog is not loaded."
-
-                            ai_response = ai_response.replace(steam_user_line, formatted_output, 1)
+                    # Extract and execute tools using robust parsing
+                    ai_response = await self.extract_and_execute_tools(ai_response, message.channel, "channel")
 
                     # Calculate processing time
                     processing_time_ms = int((time.time() - processing_start_time) * 1000)
@@ -2092,238 +1995,8 @@ Summary:"""
 
         ai_response = await self.call_ai(messages)
 
-        # Check if the AI wants to execute a command or perform a Google search
-        if "**EXECUTE_COMMAND:**" in ai_response:
-            # Extract command from response
-            lines = ai_response.split('\n')
-            command_line = None
-            for line in lines:
-                if "**EXECUTE_COMMAND:**" in line:
-                    command_line = line
-                    break
-
-            if command_line:
-                # Extract command name
-                command_name = command_line.split("**EXECUTE_COMMAND:**")[1].strip()
-
-                # Execute the command
-                command_output = await self.execute_safe_command(command_name)
-
-                # Always process the output through the AI model for summarization
-                if not command_output.startswith('❌'):
-                    # Create a new message to ask AI to summarize the command output
-                    summary_messages = [
-                        {
-                            "role": "system",
-                            "content": "You are Gork, a helpful AI assistant. Analyze the following command output and provide a concise, user-friendly summary. Highlight key details and format it nicely for Discord."
-                        },
-                        {
-                            "role": "user",
-                            "content": f"Command: {command_name}\nOutput:\n{command_output}"
-                        }
-                    ]
-
-                    # Get AI summary
-                    summary_response = await self.call_ai(summary_messages, max_tokens=800)
-                    ai_response = ai_response.replace(command_line, summary_response, 1)
-                else:
-                    # If command failed, just replace with the error message
-                    ai_response = ai_response.replace(command_line, command_output, 1)
-
-        elif "**GET_WEATHER:**" in ai_response:
-            # Extract location from response
-            lines = ai_response.split('\n')
-            weather_line = None
-            for line in lines:
-                if "**GET_WEATHER:**" in line:
-                    weather_line = line
-                    break
-
-            if weather_line:
-                # Extract location
-                location = weather_line.split("**GET_WEATHER:**")[1].strip()
-
-                # Get weather data
-                weather_results = await self.get_weather(location)
-
-                # Replace only the specific weather instruction line with the results
-                ai_response = ai_response.replace(weather_line, weather_results, 1)
-
-        elif "**WEB_SEARCH:**" in ai_response:
-            # Extract search query from response
-            lines = ai_response.split('\n')
-            search_line = None
-            for line in lines:
-                if "**WEB_SEARCH:**" in line:
-                    search_line = line
-                    break
-
-            if search_line:
-                # Extract search query
-                search_query = search_line.split("**WEB_SEARCH:**")[1].strip()
-
-                # Perform web search
-                search_results = await self.web_search(search_query)
-
-                # Replace only the specific search instruction line with the results
-                ai_response = ai_response.replace(search_line, search_results, 1)
-
-        elif "**VISIT_WEBSITE:**" in ai_response:
-            # Extract website URL from response
-            lines = ai_response.split('\n')
-            visit_line = None
-            for line in lines:
-                if "**VISIT_WEBSITE:**" in line:
-                    visit_line = line
-                    break
-
-            if visit_line:
-                # Extract website URL
-                website_url = visit_line.split("**VISIT_WEBSITE:**")[1].strip()
-
-                # Visit the website
-                website_content = await self.visit_website(website_url)
-
-                # Always process the content through the AI model for summarization
-                if not website_content.startswith('❌'):
-                    # Create a new message to ask AI to summarize the website content
-                    summary_messages = [
-                        {
-                            "role": "system",
-                            "content": "You are Gork, a helpful AI assistant. Analyze the following website content and provide a concise, user-friendly summary. Highlight key information and format it nicely for Discord."
-                        },
-                        {
-                            "role": "user",
-                            "content": f"Website: {website_url}\nContent:\n{website_content}"
-                        }
-                    ]
-
-                    # Get AI summary
-                    summary_response = await self.call_ai(summary_messages, max_tokens=800)
-                    ai_response = ai_response.replace(visit_line, summary_response, 1)
-                else:
-                    # If website visit failed, just replace with the error message
-                    ai_response = ai_response.replace(visit_line, website_content, 1)
-
-        elif "STEAM_SEARCH:" in ai_response:
-            print(f"DEBUG: Steam search detected in slash command AI response: {ai_response}")
-            # Extract game name from response
-            lines = ai_response.split('\n')
-            steam_line = None
-            for line in lines:
-                if "STEAM_SEARCH:" in line:
-                    steam_line = line
-                    break
-
-            if steam_line:
-                # Extract game name
-                game_name = steam_line.split("STEAM_SEARCH:")[1].strip()
-                print(f"DEBUG: Extracted game name from slash command: '{game_name}'")
-
-                # Search for the game on Steam
-                steam_embed = await self.search_steam_game(game_name)
-
-                # Send the embed directly and remove the steam instruction from AI response
-                try:
-                    await interaction.followup.send(embed=steam_embed)
-                except Exception as e:
-                    print(f"Error sending Steam embed via followup: {e}")
-                ai_response = ai_response.replace(steam_line, "", 1).strip()
-
-                # If AI response is now empty, set a default message
-                if not ai_response:
-                    ai_response = f"Here's the Steam information for **{game_name}**:"
-
-        elif "**SPOTIFY_SEARCH:**" in ai_response:
-            print(f"DEBUG: Spotify search detected in slash command AI response: {ai_response}")
-            # Extract song/artist name from response
-            lines = ai_response.split('\n')
-            spotify_line = None
-            for line in lines:
-                if "**SPOTIFY_SEARCH:**" in line:
-                    spotify_line = line
-                    break
-
-            if spotify_line:
-                # Extract song/artist name
-                query = spotify_line.split("**SPOTIFY_SEARCH:**")[1].strip()
-                print(f"DEBUG: Extracted Spotify query from slash command: '{query}'")
-
-                # Search for the song on Spotify
-                spotify_embed = await self.search_spotify_song(query)
-                print(f"DEBUG: Spotify embed created for slash command: {type(spotify_embed)}")
-
-                # Send the embed directly and remove the spotify instruction from AI response
-                await interaction.followup.send(embed=spotify_embed)
-                print(f"DEBUG: Spotify embed sent via followup")
-                ai_response = ai_response.replace(spotify_line, "", 1).strip()
-
-                # If AI response is now empty, set a default message
-                if not ai_response:
-                    ai_response = f"Here's the Spotify information for **{query}**:"
-
-        elif "**STEAM_USER:**" in ai_response:
-            print(f"DEBUG: Steam User tool detected in slash command AI response: {ai_response}")
-            lines = ai_response.split('\n')
-            steam_user_line = None
-            for line in lines:
-                if "**STEAM_USER:**" in line:
-                    steam_user_line = line
-                    break
-
-            if steam_user_line:
-                # Extract the full tool call string
-                tool_call_str = steam_user_line.split("**STEAM_USER:**")[1].strip()
-                print(f"DEBUG: Extracted Steam User tool call from slash command: '{tool_call_str}'")
-
-                steam_user_cog = self.bot.get_cog('SteamUserTool')
-                if steam_user_cog:
-                    try:
-                        # Parse the function name and arguments
-                        match = re.match(r"(\w+)\((.*)\)", tool_call_str)
-                        if match:
-                            func_name = match.group(1)
-                            args_str = match.group(2)
-
-                            # Safely evaluate arguments (assuming simple key=value pairs or single string)
-                            kwargs = {}
-                            if args_str:
-                                arg_pairs = [arg.strip() for arg in args_str.split(',')]
-                                for arg_pair in arg_pairs:
-                                    if '=' in arg_pair:
-                                        key, value = arg_pair.split('=', 1)
-                                        kwargs[key.strip()] = value.strip().strip("'\"")
-                                    else:
-                                        if func_name == "resolve_steam_vanity_url":
-                                            kwargs['vanity_url'] = arg_pair.strip().strip("'\"")
-                                        elif func_name in ["get_steam_id", "get_steam_profile_summary", "get_user_owned_games"]:
-                                            kwargs['discord_user_id'] = arg_pair.strip().strip("'\"")
-
-                            print(f"DEBUG: Calling SteamUserTool function for slash command: {func_name} with args: {kwargs}")
-
-                            if hasattr(steam_user_cog, func_name):
-                                tool_func = getattr(steam_user_cog, func_name)
-                                tool_output = await tool_func(**kwargs)
-
-                                if tool_output is None:
-                                    formatted_output = f"Steam User Tool: {func_name} returned no data."
-                                elif isinstance(tool_output, dict):
-                                    formatted_output = f"Steam User Tool: {func_name} result:\n```json\n{json.dumps(tool_output, indent=2)}\n```"
-                                elif isinstance(tool_output, list):
-                                    formatted_output = f"Steam User Tool: {func_name} result:\n```json\n{json.dumps(tool_output, indent=2)}\n```"
-                                else:
-                                    formatted_output = f"Steam User Tool: {func_name} result: {tool_output}"
-                            else:
-                                formatted_output = f"❌ Steam User Tool: Function '{func_name}' not found."
-                        else:
-                            formatted_output = f"❌ Steam User Tool: Could not parse tool call: {tool_call_str}"
-
-                    except Exception as e:
-                        formatted_output = f"❌ Error executing Steam User Tool '{tool_call_str}': {str(e)}"
-                else:
-                    formatted_output = "❌ Steam User Tool cog is not loaded."
-
-                ai_response = ai_response.replace(steam_user_line, formatted_output, 1)
+        # Extract and execute tools using robust parsing
+        ai_response = await self.extract_and_execute_tools(ai_response, interaction, "interaction")
 
         # Calculate processing time
         processing_time_ms = int((time.time() - processing_start_time) * 1000)
