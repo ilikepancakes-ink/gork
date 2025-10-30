@@ -176,17 +176,7 @@ class Gork(commands.Cog):
                     # Execute the tool and get replacement content
                     if tool_name == 'EXECUTE_COMMAND':
                         result = await self.execute_safe_command(arg_text)
-                        if result.startswith('❌'):
-                            # For failed commands, keep the error message but don't process further
-                            processed_response = processed_response.replace(tool_call_text, result, 1)
-                        else:
-                            # For successful commands, try to get AI summary
-                            summary_messages = [
-                                {"role": "system", "content": "You are Gork, a helpful AI assistant. Analyze the following command output and provide a concise, user-friendly summary. Highlight key details and format it nicely for Discord."},
-                                {"role": "user", "content": f"Command: {arg_text}\nOutput:\n{result}"}
-                            ]
-                            summary = await self.call_ai(summary_messages, max_tokens=800)
-                            processed_response = processed_response.replace(tool_call_text, summary, 1)
+                        processed_response = processed_response.replace(tool_call_text, result, 1)
 
                     elif tool_name == 'GET_WEATHER':
                         result = await self.get_weather(arg_text)
@@ -198,15 +188,7 @@ class Gork(commands.Cog):
 
                     elif tool_name == 'VISIT_WEBSITE':
                         result = await self.visit_website(arg_text)
-                        if result.startswith('❌'):
-                            processed_response = processed_response.replace(tool_call_text, result, 1)
-                        else:
-                            summary_messages = [
-                                {"role": "system", "content": "You are Gork, a helpful AI assistant. Analyze the following website content and provide a concise, user-friendly summary. Highlight key information and format it nicely for Discord."},
-                                {"role": "user", "content": f"Website: {arg_text}\nContent:\n{result}"}
-                            ]
-                            summary = await self.call_ai(summary_messages, max_tokens=800)
-                            processed_response = processed_response.replace(tool_call_text, summary, 1)
+                        processed_response = processed_response.replace(tool_call_text, result, 1)
 
                     elif tool_name == 'STEAM_SEARCH':
                         embed = await self.search_steam_game(arg_text)
