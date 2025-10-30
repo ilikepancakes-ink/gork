@@ -211,24 +211,20 @@ gork/
 - Verify DNS configuration if using custom domain
 - Check login credentials from `ai.env`
 
-## 📈 Performance Notes
+##  Performance Notes
 
 - **Database Growth**: Logs are automatically cleaned up (90 days)
 - **Memory Usage**: Scales with user activity and conversation size
 - **API Limits**: Respect external API rate limits
 - **Disk Space**: Monitor database size for large deployments
 
-## 🤝 Support
+##  Support
 
 For issues, feature requests, or contributions:
 - Check existing issues on GitHub
 - Join our Discord server: [Add Discord link if available]
 - Review documentation and examples
 
-## 📄 License
+## License
 
 This project is licensed under the terms specified in the LICENSE file.
-
----
-
-**Note**: The official maintained version can be found at [Discord OAuth Link](https://discord.com/oauth2/authorize?client_id=1404861614670352437)
