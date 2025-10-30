@@ -143,12 +143,13 @@ class Gork(commands.Cog):
         else:
             self.whisper_model = None
 
-    async def extract_and_execute_tools(self, ai_response: str, channel_or_interaction, context: str) -> str:
+
+    async def extract_and_execute_tools(self, ai_response: str, channel_or_interaction, context: str) -> tuple[str, bool]:
         """Extract and execute tool calls from AI response using robust regex patterns"""
         import re
 
         # Define robust patterns for tool detection
-        tool_patterns = {
+        self.tool_patterns = {
             'EXECUTE_COMMAND': re.compile(r'\*?\*?EXECUTE_COMMAND:\*?\*?(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
             'GET_WEATHER': re.compile(r'\*?\*?GET_WEATHER:\*?\*?(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
             'WEB_SEARCH': re.compile(r'\*?\*?WEB_SEARCH:\*?\*?(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
@@ -164,7 +165,7 @@ class Gork(commands.Cog):
         tool_order = ['STEAM_USER', 'SPOTIFY_SEARCH', 'STEAM_SEARCH', 'WEB_SEARCH', 'VISIT_WEBSITE', 'GET_WEATHER', 'EXECUTE_COMMAND']
 
         for tool_name in tool_order:
-            pattern = tool_patterns[tool_name]
+            pattern = self.tool_patterns[tool_name]
             matches = list(pattern.finditer(processed_response))
 
             for match in matches:
@@ -226,7 +227,7 @@ class Gork(commands.Cog):
                                                 key, value = arg_pair.split('=', 1)
                                                 kwargs[key.strip()] = value.strip().strip("'\"")
                                             else:
-                                                if func_name == "resolve_steam_vanity_url":
+                                                if "resolve_steam_vanity_url" in func_name:
                                                     kwargs['vanity_url'] = arg_pair.strip().strip("'\"")
                                                 elif func_name in ["get_steam_id", "get_steam_profile_summary", "get_user_owned_games"]:
                                                     kwargs['discord_user_id'] = arg_pair.strip().strip("'\"")
@@ -262,7 +263,8 @@ class Gork(commands.Cog):
         # Clean up any remaining empty lines or extra whitespace
         processed_response = re.sub(r'\n{3,}', '\n\n', processed_response).strip()
 
-        return processed_response
+        tools_used = processed_response != ai_response  # Simple check if any replacements occurred
+        return processed_response, tools_used
 
     def get_message_logger(self):
         if self.message_logger is None:
@@ -283,15 +285,16 @@ class Gork(commands.Cog):
         content_hash = hashlib.md5(content.encode()).hexdigest()
         current_time = time.time()
 
+        # Update recent messages list (keep within time window)
         if channel_id in self.recent_bot_messages:
             self.recent_bot_messages[channel_id] = [
-                (msg_id, msg_hash, timestamp) for msg_id, msg_hash, timestamp in self.recent_bot_messages[channel_id]
-                if current_time - timestamp < 30
+                (msg_obj, msg_content, msg_hash, ts) for msg_obj, msg_content, msg_hash, ts in self.recent_bot_messages[channel_id]
+                if current_time - ts < 30
             ]
 
         if channel_id in self.recent_bot_messages:
-            for msg_id, msg_hash, timestamp in self.recent_bot_messages[channel_id]:
-                if msg_hash == content_hash and current_time - timestamp < 10:
+            for msg_obj, msg_content, msg_hash, ts in self.recent_bot_messages[channel_id]:
+                if msg_hash == content_hash and current_time - ts < 10 and msg_obj.id != message.id:
                     try:
                         await message.delete()
                         print(f"Deleted duplicate message in channel {channel_id}")
@@ -300,15 +303,25 @@ class Gork(commands.Cog):
                         print(f"Failed to delete duplicate message: {e}")
                         return False
 
-        if channel_id not in self.recent_bot_messages:
-            self.recent_bot_messages[channel_id] = []
-
-        self.recent_bot_messages[channel_id].append((message.id, content_hash, current_time))
-
-        if len(self.recent_bot_messages[channel_id]) > 5:
-            self.recent_bot_messages[channel_id] = self.recent_bot_messages[channel_id][-5:]
-
         return False
+
+    async def cleanup_tool_messages(self, channel_id: int):
+        """Clean up previous messages that contain tool calls"""
+        current_time = time.time()
+
+        for msg_obj, msg_content, msg_hash, ts in list(self.recent_bot_messages.get(channel_id, [])):
+            if current_time - ts > 60:  # Skip very old messages
+                continue
+
+            # Check if message contains any tool pattern
+            for tool_name, pattern in self.tool_patterns.items():
+                if pattern.search(msg_content):
+                    try:
+                        await msg_obj.delete()
+                        print(f"Deleted tool call message: {msg_content[:50]}...")
+                    except Exception as e:
+                        print(f"Failed to delete tool message: {e}")
+                    break  # Only delete once per message
 
     async def get_gif_info(self, image_data: bytes, filename: str) -> str:
         """Get enhanced GIF information using Pillow if available"""
@@ -363,10 +376,17 @@ class Gork(commands.Cog):
         if channel_id not in self.recent_bot_messages:
             self.recent_bot_messages[channel_id] = []
 
-        self.recent_bot_messages[channel_id].append((message.id, content_hash, current_time))
+        self.recent_bot_messages[channel_id].append((message, content, content_hash, current_time))
 
-        if len(self.recent_bot_messages[channel_id]) > 5:
-            self.recent_bot_messages[channel_id] = self.recent_bot_messages[channel_id][-5:]
+        # Keep only recent messages (within last 30 seconds)
+        self.recent_bot_messages[channel_id] = [
+            (msg_obj, msg_content, msg_hash, ts) for msg_obj, msg_content, msg_hash, ts in self.recent_bot_messages[channel_id]
+            if current_time - ts < 30
+        ]
+
+        # Limit list size
+        if len(self.recent_bot_messages[channel_id]) > 10:
+            self.recent_bot_messages[channel_id] = self.recent_bot_messages[channel_id][-10:]
 
     async def transcribe_audio(self, audio_data: bytes, filename: str) -> str:
         """Transcribe audio data using Whisper"""
@@ -1775,7 +1795,7 @@ Summary:"""
                                             break
 
                     # Extract and execute tools using robust parsing
-                    ai_response = await self.extract_and_execute_tools(ai_response, message, "channel")
+                    ai_response, tools_used = await self.extract_and_execute_tools(ai_response, message, "channel")
 
                     # Calculate processing time
                     processing_time_ms = int((time.time() - processing_start_time) * 1000)
@@ -1811,6 +1831,9 @@ Summary:"""
                                         message, sent_message, chunk, processing_time_ms,
                                         self.model, (total_chunks, i)
                                     ))
+                            # Clean up tool messages after sending all chunks
+                            if tools_used:
+                                await self.cleanup_tool_messages(message.channel.id)
                         else:
                             sent_message = await message.reply(ai_response)
                             # Track this message to prevent duplicates
@@ -1820,6 +1843,9 @@ Summary:"""
                                 asyncio.create_task(message_logger.log_bot_response(
                                     message, sent_message, ai_response, processing_time_ms, self.model
                                 ))
+                            # Clean up tool messages after sending single response
+                            if tools_used:
+                                await self.cleanup_tool_messages(message.channel.id)
 
             except Exception as e:
                 # Log the error and send a user-friendly message
