@@ -4,13 +4,13 @@ from discord.ext import commands
 from dotenv import load_dotenv
 import asyncio
 from discord import app_commands
-import sys # Import sys
-import os # Import os if not already imported
+import sys 
+import os 
 
 load_dotenv("ai.env")
 discord_token = os.getenv("DISCORD_TOKEN")
 
-# Add the current working directory to sys.path to ensure modules like 'utils.database' are found
+
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 if not discord_token:
@@ -21,7 +21,7 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="/", intents=intents)
 async def load_cogs():
-    # Explicitly load steam_tool first
+    
     try:
         await bot.load_extension("cogs.steam_tool")
         print("Loaded cog: steam_tool.py")
@@ -29,7 +29,7 @@ async def load_cogs():
         print(f"Failed to load cog steam_tool.py: {e}")
 
     for filename in os.listdir("cogs"):
-        if filename.endswith(".py") and filename != "steam_tool.py": # Skip if already loaded
+        if filename.endswith(".py") and filename != "steam_tool.py": 
             try:
                 await bot.load_extension(f"cogs.{filename[:-3]}")
                 print(f"Loaded cog: {filename}")

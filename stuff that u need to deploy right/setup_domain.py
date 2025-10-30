@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 """
 Domain Setup Helper for gorkdb.ilikepancakes.gay
 Helps configure the server for public domain access
@@ -24,7 +24,7 @@ def get_public_ip():
 def get_local_ip():
     """Get the local IP address"""
     try:
-        # Connect to a remote address to determine local IP
+        
         with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
             s.connect(("8.8.8.8", 80))
             return s.getsockname()[0]
@@ -53,7 +53,7 @@ def main():
     print("🌐 Domain Setup Helper for gorkdb.ilikepancakes.gay")
     print("=" * 60)
     
-    # Get IP addresses
+    
     print("\n📡 Network Information:")
     local_ip = get_local_ip()
     print(f"   Local IP: {local_ip}")
@@ -64,7 +64,7 @@ def main():
     else:
         print("   Public IP: Could not determine (check internet connection)")
     
-    # Check port availability
+    
     print("\n🔌 Port Check:")
     if check_port_availability(80):
         print("   ✅ Port 80 is available")
@@ -72,7 +72,7 @@ def main():
         print("   ❌ Port 80 is in use or requires admin privileges")
         print("   💡 Try running as administrator/sudo, or use a different port")
     
-    # Check DNS resolution
+    
     print("\n🌍 DNS Check:")
     resolved_ip = check_dns_resolution()
     if resolved_ip:

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 import os
 import asyncio
 from utils.database import MessageDatabase

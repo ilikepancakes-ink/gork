@@ -7,7 +7,7 @@ import sys
 import os
 from typing import Optional
 
-# Add the parent directory to the path so we can import from utils
+
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from utils.database import MessageDatabase
 
@@ -17,17 +17,17 @@ class MessageLogger(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.db = MessageDatabase("data/bot_messages.db")
-        self.cleanup_task.start()  # Start the cleanup task
+        self.cleanup_task.start()  
     
     def cog_unload(self):
         """Clean up when cog is unloaded"""
         self.cleanup_task.cancel()
     
-    @tasks.loop(hours=24)  # Run daily
+    @tasks.loop(hours=24)  
     async def cleanup_task(self):
         """Periodic cleanup of old messages"""
         try:
-            deleted_count = await self.db.cleanup_old_messages(days_to_keep=90)  # Keep 90 days
+            deleted_count = await self.db.cleanup_old_messages(days_to_keep=90)  
             if deleted_count > 0:
                 print(f"🧹 Daily cleanup: Removed {deleted_count} old database entries")
         except Exception as e:
@@ -41,9 +41,9 @@ class MessageLogger(commands.Cog):
     async def log_user_message(self, message: discord.Message) -> bool:
         """Log a user message to the database"""
         try:
-            # Import here to avoid circular imports
+            
             from cogs.gork import Gork
-            # Extract attachment information if present
+            
             attachment_info = None
             has_attachments = len(message.attachments) > 0
             
@@ -60,7 +60,7 @@ class MessageLogger(commands.Cog):
                     ]
                 }
             
-            # Get guild and channel information
+            
             guild_id = str(message.guild.id) if message.guild else None
             guild_name = message.guild.name if message.guild else None
             channel_name = message.channel.name if hasattr(message.channel, 'name') else "DM"
@@ -80,18 +80,18 @@ class MessageLogger(commands.Cog):
                 timestamp=message.created_at
             )
 
-            # Check if we should generate/update user summary
+            
             if success:
                 try:
-                    # Get current message count for user
+                    
                     message_count = await self.db.get_message_count_for_user(str(message.author.id))
 
-                    # Trigger summary generation every 10 messages (after message 10, 20, 30, etc.)
+                    
                     if message_count > 0 and message_count % 10 == 0:
-                        # Import here to avoid circular imports
+                        
                         gork_cog = self.bot.get_cog('Gork')
                         if gork_cog:
-                            # Run summary generation in background to not block message logging
+                            
                             asyncio.create_task(gork_cog.generate_user_summary(str(message.author.id)))
                             print(f"📝 Triggering user summary generation for {message.author.name} (message count: {message_count})")
                         else:
@@ -108,12 +108,12 @@ class MessageLogger(commands.Cog):
     async def log_user_message_from_interaction(self, interaction: discord.Interaction, message_content: str) -> bool:
         """Log a user message from a slash command interaction"""
         try:
-            # Get guild and channel information
+            
             guild_id = str(interaction.guild.id) if interaction.guild else None
             guild_name = interaction.guild.name if interaction.guild else None
             channel_name = interaction.channel.name if hasattr(interaction.channel, 'name') else "DM"
 
-            # Create a fake message ID for slash commands
+            
             fake_message_id = f"slash_{interaction.id}"
 
             success = await self.db.log_user_message(
@@ -126,7 +126,7 @@ class MessageLogger(commands.Cog):
                 guild_name=guild_name,
                 message_id=fake_message_id,
                 message_content=message_content,
-                has_attachments=False,  # Slash commands don't support attachments
+                has_attachments=False,  
                 attachment_info=None,
                 timestamp=datetime.utcnow()
             )
@@ -176,7 +176,7 @@ class MessageLogger(commands.Cog):
         try:
             response_chunks, chunk_number = chunk_info
 
-            # Create fake original message ID for slash commands
+            
             fake_original_message_id = f"slash_{interaction.id}"
 
             success = await self.db.log_bot_response(
@@ -234,7 +234,7 @@ class MessageLogger(commands.Cog):
     @app_commands.allowed_contexts(guilds=True, dms=True, private_channels=True)
     async def message_history(self, interaction: discord.Interaction, limit: int = 10):
         """Get recent message history for the user"""
-        await interaction.response.defer(ephemeral=True)  # Make it ephemeral for privacy
+        await interaction.response.defer(ephemeral=True)  
         
         if limit > 50:
             limit = 50
@@ -255,7 +255,7 @@ class MessageLogger(commands.Cog):
                 timestamp=datetime.utcnow()
             )
             
-            for i, msg in enumerate(history[:10], 1):  # Show max 10 in embed
+            for i, msg in enumerate(history[:10], 1):  
                 timestamp = datetime.fromisoformat(msg['timestamp'].replace('Z', '+00:00'))
                 formatted_time = timestamp.strftime("%m/%d %H:%M")
                 
@@ -305,7 +305,7 @@ class MessageLogger(commands.Cog):
             embed.add_field(name="Total Responses", value=stats.get('total_responses', 0), inline=True)
             embed.add_field(name="Unique Users", value=stats.get('unique_users', 0), inline=True)
             
-            # Add database file size if possible
+            
             try:
                 import os
                 db_size = os.path.getsize(self.db.db_path)
@@ -323,7 +323,7 @@ class MessageLogger(commands.Cog):
     @app_commands.describe(user="The user to get logs for")
     async def logs_slash(self, interaction: discord.Interaction, user: discord.User):
         """Slash command to get user logs (Admin only)"""
-        # Check if user has the specific user ID
+        
         if interaction.user.id != 1141746562922459136:
             await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
             return
@@ -331,21 +331,21 @@ class MessageLogger(commands.Cog):
         await interaction.response.defer(ephemeral=True)
 
         try:
-            # Get conversation context for the user
+            
             conversation_context = await self.db.get_conversation_context(str(user.id), limit=100)
 
             if not conversation_context:
                 await interaction.followup.send(f"📭 No conversation logs found for {user.mention} ({user.name})", ephemeral=True)
                 return
 
-            # Create DM channel with the admin
+            
             try:
                 dm_channel = await interaction.user.create_dm()
             except:
                 await interaction.followup.send("❌ Could not create DM channel. Please enable DMs from server members.", ephemeral=True)
                 return
 
-            # Format the logs
+            
             log_content = f"📋 **Conversation Logs for {user.name} ({user.id})**\n"
             log_content += f"Total messages: {len(conversation_context)}\n"
             log_content += "=" * 50 + "\n\n"
@@ -366,22 +366,22 @@ class MessageLogger(commands.Cog):
                     model = msg.get("model_used", "unknown")
                     message_line = f"**{i}. 🤖 Bot** ({model}) ({timestamp}):\n{content}\n\n"
 
-                # Check if adding this message would exceed Discord's 2000 character limit
-                if len(current_chunk + message_line) > 1900:  # Leave some buffer
-                    # Send current chunk
+                
+                if len(current_chunk + message_line) > 1900:  
+                    
                     try:
                         await dm_channel.send(f"```\n{current_chunk}\n```")
                     except Exception as e:
                         await interaction.followup.send(f"❌ Error sending DM chunk {chunk_count}: {str(e)}", ephemeral=True)
                         return
 
-                    # Start new chunk
+                    
                     chunk_count += 1
                     current_chunk = f"📋 **Logs Continued (Part {chunk_count})**\n\n" + message_line
                 else:
                     current_chunk += message_line
 
-            # Send final chunk
+            
             if current_chunk.strip():
                 try:
                     await dm_channel.send(f"```\n{current_chunk}\n```")
@@ -389,7 +389,7 @@ class MessageLogger(commands.Cog):
                     await interaction.followup.send(f"❌ Error sending final DM chunk: {str(e)}", ephemeral=True)
                     return
 
-            # Send completion message
+            
             await dm_channel.send(f"✅ **Log Export Complete**\nTotal messages: {len(conversation_context)}\nSent in {chunk_count} parts")
             await interaction.followup.send(f"✅ Conversation logs for {user.mention} have been sent to your DMs!", ephemeral=True)
 
@@ -399,7 +399,7 @@ class MessageLogger(commands.Cog):
     @commands.command(name="logs", hidden=True)
     async def logs_command(self, ctx, user: discord.User = None):
         """Regular command to get user logs (Admin only)"""
-        # Check if user has the specific user ID
+        
         if ctx.author.id != 1141746562922459136:
             await ctx.send("❌ You don't have permission to use this command.")
             return
@@ -409,21 +409,21 @@ class MessageLogger(commands.Cog):
             return
 
         try:
-            # Get conversation context for the user
+            
             conversation_context = await self.db.get_conversation_context(str(user.id), limit=100)
 
             if not conversation_context:
                 await ctx.send(f"📭 No conversation logs found for {user.mention} ({user.name})")
                 return
 
-            # Create DM channel with the admin
+            
             try:
                 dm_channel = await ctx.author.create_dm()
             except:
                 await ctx.send("❌ Could not create DM channel. Please enable DMs from server members.")
                 return
 
-            # Format the logs (same logic as slash command)
+            
             log_content = f"📋 **Conversation Logs for {user.name} ({user.id})**\n"
             log_content += f"Total messages: {len(conversation_context)}\n"
             log_content += "=" * 50 + "\n\n"
@@ -444,22 +444,22 @@ class MessageLogger(commands.Cog):
                     model = msg.get("model_used", "unknown")
                     message_line = f"**{i}. 🤖 Bot** ({model}) ({timestamp}):\n{content}\n\n"
 
-                # Check if adding this message would exceed Discord's 2000 character limit
-                if len(current_chunk + message_line) > 1900:  # Leave some buffer
-                    # Send current chunk
+                
+                if len(current_chunk + message_line) > 1900:  
+                    
                     try:
                         await dm_channel.send(f"```\n{current_chunk}\n```")
                     except Exception as e:
                         await ctx.send(f"❌ Error sending DM chunk {chunk_count}: {str(e)}")
                         return
 
-                    # Start new chunk
+                    
                     chunk_count += 1
                     current_chunk = f"📋 **Logs Continued (Part {chunk_count})**\n\n" + message_line
                 else:
                     current_chunk += message_line
 
-            # Send final chunk
+            
             if current_chunk.strip():
                 try:
                     await dm_channel.send(f"```\n{current_chunk}\n```")
@@ -467,7 +467,7 @@ class MessageLogger(commands.Cog):
                     await ctx.send(f"❌ Error sending final DM chunk: {str(e)}")
                     return
 
-            # Send completion message
+            
             await dm_channel.send(f"✅ **Log Export Complete**\nTotal messages: {len(conversation_context)}\nSent in {chunk_count} parts")
             await ctx.send(f"✅ Conversation logs for {user.mention} have been sent to your DMs!")
 

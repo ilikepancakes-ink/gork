@@ -35,14 +35,14 @@ class Update(commands.Cog):
             if not os.path.exists(self.requirements_file):
                 return False, "requirements.txt not found"
 
-            # Read current requirements.txt
+            
             with open(self.requirements_file, 'r', encoding='utf-8') as f:
                 current_content = f.read().strip()
 
-            # Calculate hash of current requirements
+            
             current_hash = hashlib.md5(current_content.encode()).hexdigest()
 
-            # Store hash in a temporary file for comparison
+            
             hash_file = ".requirements_hash"
             previous_hash = None
 
@@ -50,7 +50,7 @@ class Update(commands.Cog):
                 with open(hash_file, 'r') as f:
                     previous_hash = f.read().strip()
 
-            # Update hash file
+            
             with open(hash_file, 'w') as f:
                 f.write(current_hash)
 
@@ -70,7 +70,7 @@ class Update(commands.Cog):
             if not os.path.exists(self.requirements_file):
                 return False, "requirements.txt not found"
 
-            # Use pip to install/upgrade requirements
+            
             stdout, stderr, code = await self.run_command(
                 f"{sys.executable} -m pip install -r {self.requirements_file} --upgrade"
             )
@@ -97,10 +97,10 @@ class Update(commands.Cog):
 
             for req in requirements:
                 req = req.strip()
-                if not req or req.startswith('#'):
+                if not req or req.startswith('
                     continue
 
-                # Parse package name (handle >= and other operators)
+                
                 package_name = req.split('>=')[0].split('==')[0].split('>')[0].split('<')[0].split('!')[0].strip()
 
                 if package_name.lower() not in installed_packages:
@@ -117,25 +117,25 @@ class Update(commands.Cog):
     async def git_pull(self) -> tuple[bool, str]:
         """Pull latest changes from the git repository"""
         try:
-            # Check if we're in a git repository
+            
             stdout, stderr, code = await self.run_command("git status")
             if code != 0:
                 return False, "Not in a git repository or git not available"
             
-            # Add remote if it doesn't exist
+            
             stdout, stderr, code = await self.run_command("git remote get-url origin")
             if code != 0:
-                # Add the remote
+                
                 stdout, stderr, code = await self.run_command(f"git remote add origin {self.repo_url}")
                 if code != 0:
                     return False, f"Failed to add remote: {stderr}"
             
-            # Fetch latest changes
+            
             stdout, stderr, code = await self.run_command("git fetch origin")
             if code != 0:
                 return False, f"Failed to fetch: {stderr}"
             
-            # Pull changes
+            
             stdout, stderr, code = await self.run_command("git pull origin main")
             if code != 0:
                 return False, f"Failed to pull: {stderr}"
@@ -151,10 +151,10 @@ class Update(commands.Cog):
             results = []
             failed_cogs = []
 
-            # Get list of loaded cogs
+            
             loaded_cogs = list(self.bot.cogs.keys())
 
-            # Create a mapping of cog names to their actual file names
+            
             cog_file_mapping = {
                 'MessageLogger': 'message_logger',
                 'Gork': 'gork',
@@ -165,48 +165,48 @@ class Update(commands.Cog):
                 'SteamUserTool': 'steam_tool'
             }
 
-            # Get all available cog files
+            
             cogs_dir = "cogs"
             available_cog_files = []
             if os.path.exists(cogs_dir):
                 available_cog_files = [f[:-3] for f in os.listdir(cogs_dir)
                                      if f.endswith('.py') and not f.startswith('__')]
 
-            # First, reload existing cogs
+            
             for cog_name in loaded_cogs:
                 try:
-                    # Skip reloading the update cog itself to avoid issues
+                    
                     if cog_name.lower() == 'update':
                         continue
 
-                    # Find the extension name using the mapping or fallback to lowercase
+                    
                     file_name = cog_file_mapping.get(cog_name, cog_name.lower())
                     extension_name = f"cogs.{file_name}"
 
-                    # Check if the file actually exists
+                    
                     if file_name not in available_cog_files:
                         failed_cogs.append(f"❌ Cog file not found for {cog_name}: {file_name}.py")
                         continue
 
-                    # Reload the extension
+                    
                     await self.bot.reload_extension(extension_name)
                     results.append(f"✅ Reloaded {cog_name}")
 
                 except Exception as e:
                     failed_cogs.append(f"❌ Failed to reload {cog_name}: {str(e)}")
 
-            # Then, try to load any new cogs that might have been added
+            
             if available_cog_files:
-                # Create reverse mapping from file names to cog names
+                
                 file_to_cog_mapping = {v: k for k, v in cog_file_mapping.items()}
 
                 for file_name in available_cog_files:
                     extension_name = f"cogs.{file_name}"
 
-                    # Get the actual cog class name
+                    
                     expected_cog_name = file_to_cog_mapping.get(file_name, file_name.title().replace('_', ''))
 
-                    # Skip if already loaded or if it's the update cog
+                    
                     if file_name.lower() == 'update' or expected_cog_name in loaded_cogs:
                         continue
 
@@ -214,13 +214,13 @@ class Update(commands.Cog):
                         await self.bot.load_extension(extension_name)
                         results.append(f"✅ Loaded new cog: {expected_cog_name}")
                     except Exception as e:
-                        # Check if it's already loaded with a different name
+                        
                         if "already loaded" in str(e).lower():
                             results.append(f"ℹ️ Cog {file_name} already loaded")
                         else:
                             failed_cogs.append(f"❌ Failed to load new cog {file_name}: {str(e)}")
 
-            # Sync slash commands
+            
             try:
                 await self.bot.tree.sync()
                 results.append("✅ Synced slash commands")
@@ -244,7 +244,7 @@ class Update(commands.Cog):
     async def debug(self, interaction: discord.Interaction, action: str):
         """Debug command for bot maintenance"""
         
-        # Check if user has administrator permissions
+        
         if not interaction.user.guild_permissions.administrator:
             await interaction.response.send_message("❌ You need administrator permissions to use debug commands.", ephemeral=True)
             return
@@ -262,7 +262,7 @@ class Update(commands.Cog):
         )
         await interaction.followup.send(embed=embed)
         
-        # Step 1: Git pull
+        
         embed.add_field(name="📥 Git Pull", value="Pulling latest changes...", inline=False)
         await interaction.edit_original_response(embed=embed)
 
@@ -276,7 +276,7 @@ class Update(commands.Cog):
             await interaction.edit_original_response(embed=embed)
             return
 
-        # Step 2: Check for dependency changes
+        
         embed.add_field(name="📦 Check Dependencies", value="Checking for new pip packages...", inline=False)
         await interaction.edit_original_response(embed=embed)
 
@@ -286,7 +286,7 @@ class Update(commands.Cog):
         if deps_changed or has_missing:
             embed.set_field_at(1, name="📦 Check Dependencies", value=f"⚠️ Changes detected\n```\n{deps_message}\n{missing_message}\n```", inline=False)
 
-            # Step 3: Install dependencies
+            
             embed.add_field(name="⬇️ Install Dependencies", value="Installing/upgrading pip packages...", inline=False)
             await interaction.edit_original_response(embed=embed)
 
@@ -302,7 +302,7 @@ class Update(commands.Cog):
         else:
             embed.set_field_at(1, name="📦 Check Dependencies", value=f"✅ No changes\n```\n{deps_message}\n{missing_message}\n```", inline=False)
         
-        # Final Step: Reload cogs
+        
         cog_field_index = 3 if (deps_changed or has_missing) else 2
         embed.add_field(name="🔄 Reload Cogs", value="Reloading all cogs...", inline=False)
         await interaction.edit_original_response(embed=embed)
@@ -324,7 +324,7 @@ class Update(commands.Cog):
     async def check_deps(self, interaction: discord.Interaction):
         """Check for missing dependencies without updating"""
 
-        # Check if user has administrator permissions
+        
         if not interaction.user.guild_permissions.administrator:
             await interaction.response.send_message("❌ You need administrator permissions to use this command.", ephemeral=True)
             return
@@ -338,7 +338,7 @@ class Update(commands.Cog):
         )
         await interaction.followup.send(embed=embed)
 
-        # Check for missing packages
+        
         has_missing, missing_message, missing_list = await self.check_missing_packages()
 
         if has_missing:

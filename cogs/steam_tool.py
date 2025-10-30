@@ -4,7 +4,7 @@ import discord
 from discord.ext import commands
 from typing import Optional, List, Dict, Any
 from utils.database import MessageDatabase
-from utils.steam_api import resolve_vanity_url as steam_resolve_vanity_url # Renamed to avoid conflict
+from utils.steam_api import resolve_vanity_url as steam_resolve_vanity_url 
 
 class SteamUserTool(commands.Cog):
     def __init__(self, bot: commands.Bot, db: MessageDatabase):

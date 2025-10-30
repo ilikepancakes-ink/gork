@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 """
 Quick fix script to help with MessageLogger cog loading issues
 """

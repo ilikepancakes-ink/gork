@@ -1,11 +1,11 @@
-# pylint: disable=no-member
+
 import discord
 from discord.ext import commands
 from discord import app_commands
 from typing import Optional
 from datetime import datetime, timezone
 
-# Import database operations
+
 from utils.database import MessageDatabase
 from lists import config
 
@@ -13,12 +13,12 @@ from lists import config
 class UserInfoCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.db = MessageDatabase("data/bot_messages.db") # Initialize database
+        self.db = MessageDatabase("data/bot_messages.db") 
         self.developer_badges = {
             config.Owners.ILIKEPANCAKES: f"{config.CustomEmoji.STAFF_BLUE}OpenGuard Developer",
             config.Owners.SLIPSTREAM: f"{config.CustomEmoji.STAFF_PINK}OpenGuard Developer",
         }
-        # Legacy variables for compatibility (no longer needed with database)
+        
         self.custom_data_file = "user_data.json"
         self.custom_user_data = {}
 
@@ -31,16 +31,16 @@ class UserInfoCog(commands.Cog):
     def _format_time_difference(self, past_time: datetime) -> str:
         """Calculate and format the time difference from a past datetime to now."""
         now = datetime.now(timezone.utc)
-        # Ensure past_time is timezone-aware
+        
         if past_time.tzinfo is None:
             past_time = past_time.replace(tzinfo=timezone.utc)
 
         diff = now - past_time
 
-        # Calculate total minutes
+        
         total_minutes = int(diff.total_seconds() / 60)
 
-        # Calculate years, days, hours, minutes
+        
         years = total_minutes // (365 * 24 * 60)
         remaining_minutes = total_minutes % (365 * 24 * 60)
 
@@ -50,7 +50,7 @@ class UserInfoCog(commands.Cog):
         hours = remaining_minutes // 60
         minutes = remaining_minutes % 60
 
-        # Build the formatted string
+        
         parts = []
         if years > 0:
             parts.append(f"{years} year{'s' if years != 1 else ''}")
@@ -131,14 +131,14 @@ class UserInfoCog(commands.Cog):
             elif isinstance(activity, discord.Spotify):
                 activity_str = f"Listening to {activity.title} by {activity.artist}"
 
-        # Truncate activity string if too long
+        
         activity_str = self._truncate_field_value(activity_str)
         roles_str = "None"
         if is_guild_member and member.roles:
             roles = [role.mention for role in reversed(member.roles) if role.name != "@everyone"]
             if roles:
                 roles_str = ", ".join(roles)
-                # Truncate if too long for Discord embed field limit
+                
                 roles_str = self._truncate_field_value(roles_str)
             else:
                 roles_str = "None"
@@ -170,7 +170,7 @@ class UserInfoCog(commands.Cog):
         if developer_badge:
             badge_str = (badge_str + ", " if badge_str else "") + developer_badge
 
-        # Truncate badge string if too long
+        
         badge_str = self._truncate_field_value(badge_str)
         embed = discord.Embed(
             title=f"User Info: {member.display_name}",
@@ -178,33 +178,33 @@ class UserInfoCog(commands.Cog):
             description=f"Profile of {member.mention}",
         )
 
-        # Set banner as the main image (appears at top of embed)
+        
         if banner_url:
             embed.set_image(url=banner_url)
 
-        # Set user avatar as thumbnail (appears at top right corner)
+        
         embed.set_thumbnail(url=member.display_avatar.url)
 
         if badge_str:
             embed.add_field(name="Badge", value=badge_str, inline=False)
 
-        # Removed custom_user_data and Admin Notes field as it's incompatible with current database structure
-        # custom_user_data = await self.get_custom_user_data(member.id)
-        # if custom_user_data:
-        #     notes_str = ""
-        #     for key, value in custom_user_data.items():
-        #         notes_str += f"**{key.replace('_', ' ').title()}:** {value}\n"
-        #     if notes_str:
-        #         notes_str = self._truncate_field_value(notes_str)
-        #         embed.add_field(name="📋 Admin Notes", value=notes_str, inline=False)
+        
+        
+        
+        
+        
+        
+        
+        
+        
         embed.add_field(name="Nickname", value=member.nick or "None", inline=True)
-        embed.add_field(name="Username", value=f"{member.name}#{member.discriminator}", inline=True)
+        embed.add_field(name="Username", value=f"{member.name}
         embed.add_field(name="User ID", value=member.id, inline=True)
         embed.add_field(name="Status", value=status, inline=True)
         embed.add_field(name="Device", value=device_str, inline=True)
         embed.add_field(name="Activity", value=activity_str, inline=True)
         embed.add_field(name="Roles", value=roles_str, inline=False)
-        # Calculate time differences
+        
         account_age = self._format_time_difference(member.created_at)
         account_created_text = f"{member.created_at.strftime('%Y-%m-%d %H:%M:%S UTC')}\n({account_age} ago)"
 

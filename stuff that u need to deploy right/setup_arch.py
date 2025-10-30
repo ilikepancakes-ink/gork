@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 """
 Arch Linux setup script for gorkdb.ilikepancakes.gay
 """
@@ -35,7 +35,7 @@ def setup_firewall():
     """Setup firewall rules for port 80"""
     print("🔥 Configuring firewall...")
     
-    # Check if ufw is installed
+    
     success, _, _ = run_command("which ufw", check=False)
     if success:
         print("Using ufw...")
@@ -44,7 +44,7 @@ def setup_firewall():
         print("✅ Firewall configured with ufw")
         return True
     
-    # Check if iptables is available
+    
     success, _, _ = run_command("which iptables", check=False)
     if success:
         print("Using iptables...")
@@ -77,7 +77,7 @@ RestartSec=10
 StandardOutput=journal
 StandardError=journal
 
-# Security settings
+
 NoNewPrivileges=true
 ProtectSystem=strict
 ProtectHome=true
@@ -93,7 +93,7 @@ WantedBy=multi-user.target
         with open(service_path, 'w') as f:
             f.write(service_content)
         
-        # Reload systemd and enable service
+        
         run_command("systemctl daemon-reload")
         run_command("systemctl enable gorkdb.service")
         
@@ -115,7 +115,7 @@ def main():
         print("Run with: sudo python setup_arch.py")
         return 1
     
-    # Check if PHP is installed
+    
     success, _, _ = run_command("which php", check=False)
     if not success:
         if not install_php():
@@ -123,7 +123,7 @@ def main():
     else:
         print("✅ PHP is already installed")
     
-    # Setup database if needed
+    
     if not Path("data/bot_messages.db").exists():
         print("🗄️  Setting up database...")
         success, stdout, stderr = run_command("python setup_database.py")
@@ -135,10 +135,10 @@ def main():
     else:
         print("✅ Database already exists")
     
-    # Setup firewall
+    
     setup_firewall()
     
-    # Setup systemd service
+    
     setup_systemd_service()
     
     print("\n🎉 Setup complete!")

@@ -11,7 +11,7 @@ class ContentFilter:
     def __init__(self, db: MessageDatabase):
         self.db = db
         
-        # Define content filter prompts for different levels
+        
         self.filter_prompts = {
             'strict': {
                 'system_addition': "\n\nIMPORTANT CONTENT GUIDELINES:\n"
@@ -56,7 +56,7 @@ class ContentFilter:
             }
         except Exception as e:
             print(f"Error getting user content settings: {e}")
-            # Return safe defaults on error
+            
             return {
                 'nsfw_mode': False,
                 'content_filter_level': 'strict',
@@ -68,15 +68,15 @@ class ContentFilter:
         filter_level = content_settings.get('content_filter_level', 'strict')
         nsfw_mode = content_settings.get('nsfw_mode', False)
         
-        # If NSFW mode is disabled, always use strict filtering
+        
         if not nsfw_mode and filter_level in ['moderate', 'minimal']:
             filter_level = 'strict'
         
-        # If NSFW mode is enabled but filter level is minimal, use minimal
+        
         if nsfw_mode and filter_level == 'minimal':
             filter_level = 'minimal'
         elif nsfw_mode and filter_level in ['strict', 'moderate']:
-            # User has NSFW enabled but chose a more restrictive filter
+            
             filter_level = filter_level
         
         return self.filter_prompts.get(filter_level, self.filter_prompts['strict'])['system_addition']
@@ -86,7 +86,7 @@ class ContentFilter:
         filter_level = content_settings.get('content_filter_level', 'strict')
         nsfw_mode = content_settings.get('nsfw_mode', False)
         
-        # If NSFW mode is disabled, always use strict filtering
+        
         if not nsfw_mode:
             filter_level = 'strict'
         
@@ -97,9 +97,9 @@ class ContentFilter:
         nsfw_mode = content_settings.get('nsfw_mode', False)
         filter_level = content_settings.get('content_filter_level', 'strict')
         
-        # NSFW content is only allowed if:
-        # 1. NSFW mode is explicitly enabled
-        # 2. Content filter level is set to minimal
+        
+        
+        
         return nsfw_mode and filter_level == 'minimal'
     
     def get_content_warning_message(self, content_settings: Dict[str, Any]) -> str:
@@ -115,12 +115,12 @@ class ContentFilter:
         """
         content_settings = await self.get_user_content_settings(user_id)
         
-        # For now, we'll rely on the AI model's built-in filtering
-        # and the system prompt modifications
-        # This method can be extended with custom content analysis if needed
+        
+        
+        
         
         return {
-            'allowed': True,  # Let the AI handle filtering based on system prompt
+            'allowed': True,  
             'filtered_content': content,
             'warning_message': self.get_content_warning_message(content_settings),
             'content_settings': content_settings
@@ -151,7 +151,7 @@ class ContentFilter:
         else:
             return "Strict Filtering"
 
-# Utility function for easy access
+
 async def get_content_filter_for_user(user_id: str, db: MessageDatabase = None) -> ContentFilter:
     """Get a ContentFilter instance for a specific user"""
     if db is None:

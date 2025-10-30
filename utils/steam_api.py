@@ -27,7 +27,7 @@ async def resolve_vanity_url(vanity_url: str) -> Optional[str]:
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(api_url, params=params)
-            response.raise_for_status()  # Raise an exception for bad status codes (4xx or 5xx)
+            response.raise_for_status()  
             data = response.json()
 
             if data and data.get("response", {}).get("success") == 1:

@@ -18,11 +18,11 @@ class MessageDatabase:
         if self.initialized:
             return
             
-        # Ensure the directory exists
+        
         os.makedirs(os.path.dirname(self.db_path) if os.path.dirname(self.db_path) else ".", exist_ok=True)
         
         async with aiosqlite.connect(self.db_path) as db:
-            # Create messages table
+            
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS messages (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -43,7 +43,7 @@ class MessageDatabase:
                 )
             """)
             
-            # Create responses table
+            
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS responses (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,7 +61,7 @@ class MessageDatabase:
                 )
             """)
             
-            # Create user_settings table
+            
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS user_settings (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -78,7 +78,7 @@ class MessageDatabase:
                 )
             """)
 
-            # Create guild_settings table
+            
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS guild_settings (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -92,7 +92,7 @@ class MessageDatabase:
                 )
             """)
 
-            # Create channel_settings table
+            
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS channel_settings (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -104,7 +104,7 @@ class MessageDatabase:
                 )
             """)
 
-            # Create user_summaries table
+            
             await db.execute("""
                 CREATE TABLE IF NOT EXISTS user_summaries (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -116,7 +116,7 @@ class MessageDatabase:
                 )
             """)
 
-            # Create indexes for better performance
+            
             await db.execute("CREATE INDEX IF NOT EXISTS idx_messages_user_id ON messages (user_id)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_messages_timestamp ON messages (timestamp)")
             await db.execute("CREATE INDEX IF NOT EXISTS idx_responses_original_message ON responses (original_message_id)")
@@ -238,7 +238,7 @@ class MessageDatabase:
             async with aiosqlite.connect(self.db_path) as db:
                 db.row_factory = aiosqlite.Row
 
-                # Get user messages and their corresponding bot responses
+                
                 async with db.execute("""
                     SELECT
                         m.message_content as user_message,
@@ -256,12 +256,12 @@ class MessageDatabase:
                 """, (user_id, limit)) as cursor:
                     rows = await cursor.fetchall()
 
-                    # Convert to conversation format (most recent first, then reverse for chronological order)
+                    
                     conversation = []
-                    for row in reversed(rows):  # Reverse to get chronological order
+                    for row in reversed(rows):  
                         row_dict = dict(row)
 
-                        # Add user message
+                        
                         user_msg = {
                             "role": "user",
                             "content": row_dict["user_message"],
@@ -269,7 +269,7 @@ class MessageDatabase:
                             "has_attachments": row_dict["has_attachments"]
                         }
 
-                        # Parse attachment info if present
+                        
                         if row_dict["attachment_info"]:
                             try:
                                 user_msg["attachment_info"] = json.loads(row_dict["attachment_info"])
@@ -278,7 +278,7 @@ class MessageDatabase:
 
                         conversation.append(user_msg)
 
-                        # Add bot response if it exists
+                        
                         if row_dict["bot_response"]:
                             bot_msg = {
                                 "role": "assistant",
@@ -303,7 +303,7 @@ class MessageDatabase:
             async with aiosqlite.connect(self.db_path) as db:
                 stats = {}
                 
-                # Total messages
+                
                 if user_id:
                     cursor = await db.execute("SELECT COUNT(*) FROM messages WHERE user_id = ?", (user_id,))
                     stats['total_messages'] = (await cursor.fetchone())[0]
@@ -317,7 +317,7 @@ class MessageDatabase:
                     cursor = await db.execute("SELECT COUNT(*) FROM responses")
                     stats['total_responses'] = (await cursor.fetchone())[0]
                 
-                # Unique users (only if not filtering by user)
+                
                 if not user_id:
                     cursor = await db.execute("SELECT COUNT(DISTINCT user_id) FROM messages")
                     stats['unique_users'] = (await cursor.fetchone())[0]
@@ -337,7 +337,7 @@ class MessageDatabase:
             cutoff_date = cutoff_date - timedelta(days=days_to_keep)
             
             async with aiosqlite.connect(self.db_path) as db:
-                # Delete old responses first (foreign key constraint)
+                
                 cursor = await db.execute("""
                     DELETE FROM responses 
                     WHERE original_message_id IN (
@@ -346,7 +346,7 @@ class MessageDatabase:
                 """, (cutoff_date,))
                 responses_deleted = cursor.rowcount
                 
-                # Delete old messages
+                
                 cursor = await db.execute("DELETE FROM messages WHERE timestamp < ?", (cutoff_date,))
                 messages_deleted = cursor.rowcount
                 
@@ -390,7 +390,7 @@ class MessageDatabase:
                         'updated_at': result[9]
                     }
                 else:
-                    # Create default settings for new user
+                    
                     default_settings = {
                         'user_id': user_id,
                         'username': None,
@@ -407,7 +407,7 @@ class MessageDatabase:
 
         except Exception as e:
             print(f"❌ Error getting user settings: {e}")
-            # Return default settings on error
+            
             return {
                 'user_id': user_id,
                 'username': None,
@@ -430,14 +430,14 @@ class MessageDatabase:
 
         try:
             async with aiosqlite.connect(self.db_path) as db:
-                # Check if user settings exist
+                
                 cursor = await db.execute("SELECT user_id FROM user_settings WHERE user_id = ?", (user_id,))
                 exists = await cursor.fetchone()
 
                 current_time = datetime.utcnow().isoformat()
 
                 if exists:
-                    # Update existing settings
+                    
                     update_fields = []
                     update_values = []
 
@@ -460,7 +460,7 @@ class MessageDatabase:
                     if steam_id is not None:
                         update_fields.append("steam_id = ?")
                         update_values.append(steam_id)
-                        # Automatically set steam_linked_at when steam_id is updated
+                        
                         update_fields.append("steam_linked_at = ?")
                         update_values.append(current_time)
 
@@ -471,12 +471,12 @@ class MessageDatabase:
                     if update_fields:
                         update_fields.append("updated_at = ?")
                         update_values.append(current_time)
-                        update_values.append(user_id)  # For WHERE clause
+                        update_values.append(user_id)  
 
                         query = f"UPDATE user_settings SET {', '.join(update_fields)} WHERE user_id = ?"
                         await db.execute(query, update_values)
                 else:
-                    # Insert new settings
+                    
                     await db.execute("""
                         INSERT INTO user_settings (user_id, username, user_display_name, nsfw_mode,
                                                  content_filter_level, steam_id, steam_username,
@@ -522,7 +522,7 @@ class MessageDatabase:
                         'updated_at': result[6]
                     }
                 else:
-                    # Return default settings for new guild
+                    
                     default_settings = {
                         'guild_id': guild_id,
                         'guild_name': None,
@@ -536,7 +536,7 @@ class MessageDatabase:
 
         except Exception as e:
             print(f"❌ Error getting guild settings: {e}")
-            # Return default settings on error
+            
             return {
                 'guild_id': guild_id,
                 'guild_name': None,
@@ -559,12 +559,12 @@ class MessageDatabase:
             current_time = datetime.utcnow().isoformat()
 
             async with aiosqlite.connect(self.db_path) as db:
-                # Check if guild settings exist
+                
                 cursor = await db.execute("SELECT guild_id FROM guild_settings WHERE guild_id = ?", (guild_id,))
                 exists = await cursor.fetchone()
 
                 if exists:
-                    # Update existing settings
+                    
                     update_fields = []
                     update_values = []
 
@@ -587,12 +587,12 @@ class MessageDatabase:
                     if update_fields:
                         update_fields.append("updated_at = ?")
                         update_values.append(current_time)
-                        update_values.append(guild_id)  # For WHERE clause
+                        update_values.append(guild_id)  
 
                         query = f"UPDATE guild_settings SET {', '.join(update_fields)} WHERE guild_id = ?"
                         await db.execute(query, update_values)
                 else:
-                    # Insert new settings
+                    
                     await db.execute("""
                         INSERT INTO guild_settings (guild_id, guild_name, random_messages_enabled,
                                                   bot_reply_enabled, reply_all_enabled,
@@ -635,7 +635,7 @@ class MessageDatabase:
                         'updated_at': result[4]
                     }
                 else:
-                    # Return default settings for new channel
+                    
                     default_settings = {
                         'channel_id': channel_id,
                         'guild_id': guild_id,
@@ -647,7 +647,7 @@ class MessageDatabase:
 
         except Exception as e:
             print(f"❌ Error getting channel settings: {e}")
-            # Return default settings on error
+            
             return {
                 'channel_id': channel_id,
                 'guild_id': guild_id,
@@ -666,12 +666,12 @@ class MessageDatabase:
             current_time = datetime.utcnow().isoformat()
 
             async with aiosqlite.connect(self.db_path) as db:
-                # Check if channel settings exist
+                
                 cursor = await db.execute("SELECT channel_id FROM channel_settings WHERE channel_id = ?", (channel_id,))
                 exists = await cursor.fetchone()
 
                 if exists:
-                    # Update existing settings
+                    
                     update_fields = []
                     update_values = []
 
@@ -682,12 +682,12 @@ class MessageDatabase:
                     if update_fields:
                         update_fields.append("updated_at = ?")
                         update_values.append(current_time)
-                        update_values.append(channel_id)  # For WHERE clause
+                        update_values.append(channel_id)  
 
                         query = f"UPDATE channel_settings SET {', '.join(update_fields)} WHERE channel_id = ?"
                         await db.execute(query, update_values)
                 else:
-                    # Insert new settings
+                    
                     await db.execute("""
                         INSERT INTO channel_settings (channel_id, guild_id, reply_all_enabled,
                                                   created_at, updated_at)
@@ -783,7 +783,7 @@ class MessageDatabase:
             await self.initialize()
 
         try:
-            # Basic Steam ID validation (64-bit Steam ID is typically a 17-digit number)
+            
             if not steam_id or not steam_id.isdigit() or len(steam_id) != 17:
                 return {
                     'valid': False,
@@ -791,7 +791,7 @@ class MessageDatabase:
                 }
 
             async with aiosqlite.connect(self.db_path) as db:
-                # Check if this Steam ID is already linked to another user
+                
                 cursor = await db.execute("""
                     SELECT user_id FROM user_settings 
                     WHERE steam_id = ? AND user_id != ?
@@ -804,7 +804,7 @@ class MessageDatabase:
                         'error': 'This Steam ID is already linked to another user.'
                     }
 
-                # Check if this user already has a different Steam ID linked
+                
                 cursor = await db.execute("""
                     SELECT steam_id FROM user_settings 
                     WHERE user_id = ? AND steam_id IS NOT NULL AND steam_id != ?
@@ -817,7 +817,7 @@ class MessageDatabase:
                         'error': 'User already has a different Steam ID linked.'
                     }
 
-                # If all checks pass
+                
                 return {
                     'valid': True,
                     'message': 'Steam ID is valid and can be linked.'
@@ -869,19 +869,19 @@ class MessageDatabase:
             current_time = datetime.utcnow().isoformat()
 
             async with aiosqlite.connect(self.db_path) as db:
-                # Check if summary exists
+                
                 cursor = await db.execute("SELECT user_id FROM user_summaries WHERE user_id = ?", (user_id,))
                 exists = await cursor.fetchone()
 
                 if exists:
-                    # Update existing summary
+                    
                     await db.execute("""
                         UPDATE user_summaries
                         SET summary_text = ?, message_count_at_update = ?, last_updated = ?
                         WHERE user_id = ?
                     """, (summary_text, message_count, current_time, user_id))
                 else:
-                    # Create new summary
+                    
                     await db.execute("""
                         INSERT INTO user_summaries (user_id, summary_text, message_count_at_update,
                                                   last_updated, created_at)
@@ -925,7 +925,7 @@ class MessageDatabase:
                 """, (user_id, limit))
 
                 results = await cursor.fetchall()
-                # Reverse to get chronological order for better summary generation
+                
                 return [row[0] for row in reversed(results)]
 
         except Exception as e:

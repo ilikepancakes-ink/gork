@@ -26,7 +26,7 @@ class UserSettings(commands.Cog):
         username = interaction.user.name
         user_display_name = interaction.user.display_name
         
-        # Update user settings
+        
         success = await self.db.update_user_settings(
             user_id=user_id,
             username=username,
@@ -91,7 +91,7 @@ class UserSettings(commands.Cog):
         username = interaction.user.name
         user_display_name = interaction.user.display_name
         
-        # Check if user is trying to set minimal filter without NSFW mode
+        
         if level == "minimal":
             current_settings = await self.db.get_user_settings(user_id)
             if not current_settings.get('nsfw_mode', False):
@@ -104,7 +104,7 @@ class UserSettings(commands.Cog):
                 await interaction.response.send_message(embed=embed, ephemeral=True)
                 return
         
-        # Update user settings
+        
         success = await self.db.update_user_settings(
             user_id=user_id,
             username=username,
@@ -210,8 +210,8 @@ class UserSettings(commands.Cog):
     async def nsfw_stats(self, interaction: discord.Interaction):
         """Display NSFW mode statistics for bot owners"""
 
-        # Check if user is bot owner (you can modify this check as needed)
-        if interaction.user.id != 1141746562922459136:  # Replace with your bot owner ID
+        
+        if interaction.user.id != 1141746562922459136:  
             embed = discord.Embed(
                 title="❌ Access Denied",
                 description="This command is only available to bot owners.",
@@ -221,7 +221,7 @@ class UserSettings(commands.Cog):
             return
 
         try:
-            # Get users with NSFW enabled
+            
             nsfw_users = await self.db.get_users_with_nsfw_enabled()
 
             embed = discord.Embed(
@@ -237,7 +237,7 @@ class UserSettings(commands.Cog):
             )
 
             if nsfw_users:
-                # Count by filter level
+                
                 filter_counts = {}
                 for user in nsfw_users:
                     level = user.get('content_filter_level', 'strict')
@@ -253,7 +253,7 @@ class UserSettings(commands.Cog):
                     inline=True
                 )
 
-                # Show recent activity
+                
                 recent_users = [user for user in nsfw_users[:5]]
                 if recent_users:
                     recent_text = []
@@ -317,9 +317,9 @@ class UserSettings(commands.Cog):
                     return
                 else:
                     await interaction.followup.send(f"Custom URL resolved to Steam ID: `{resolved_steam_id}`", ephemeral=True)
-                    # For vanity URLs, we don't get a username directly, so we'll use a placeholder or fetch later if needed.
-                    # For now, we'll just store the ID.
-                    steam_username = customurl # Use customURL as a temporary username for display if needed
+                    
+                    
+                    steam_username = customurl 
             elif steam_id:
                 if not steam_id.isdigit() or len(steam_id) != 17:
                     embed = discord.Embed(
@@ -330,8 +330,8 @@ class UserSettings(commands.Cog):
                     await interaction.followup.send(embed=embed, ephemeral=True)
                     return
                 resolved_steam_id = steam_id
-                # No username from raw Steam ID, can fetch later if needed.
-                steam_username = f"SteamID:{steam_id}" # Placeholder
+                
+                steam_username = f"SteamID:{steam_id}" 
             else:
                 embed = discord.Embed(
                     title="ℹ️ Missing Input",
@@ -342,7 +342,7 @@ class UserSettings(commands.Cog):
                 return
 
             if resolved_steam_id:
-                # Validate the Steam ID against existing links
+                
                 validation_result = await self.db.validate_steam_id_link(resolved_steam_id, user_id)
                 if not validation_result['valid']:
                     embed = discord.Embed(
@@ -353,13 +353,13 @@ class UserSettings(commands.Cog):
                     await interaction.followup.send(embed=embed, ephemeral=True)
                     return
 
-                # Update user settings with the Steam ID
+                
                 success = await self.db.update_user_settings(
                     user_id=user_id,
                     username=username,
                     user_display_name=user_display_name,
                     steam_id=resolved_steam_id,
-                    steam_username=steam_username # Store the resolved username or placeholder
+                    steam_username=steam_username 
                 )
 
                 if success:

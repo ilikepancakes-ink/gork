@@ -19,14 +19,14 @@ class Weather(commands.Cog):
         if not self.weatherapi_key or self.weatherapi_key == "your_weatherapi_key_here":
             return {"error": "WeatherAPI key not configured. Please set WEATHERAPI_KEY in ai.env file."}
         
-        # Use forecast endpoint for current + forecast data
+        
         url = f"{self.base_url}/forecast.json"
         params = {
             "key": self.weatherapi_key,
             "q": location,
-            "days": min(days, 10),  # API supports max 10 days
-            "aqi": "yes",  # Include air quality data
-            "alerts": "yes"  # Include weather alerts
+            "days": min(days, 10),  
+            "aqi": "yes",  
+            "alerts": "yes"  
         }
         
         try:
@@ -50,7 +50,7 @@ class Weather(commands.Cog):
             location_info = data["location"]
             forecast = data["forecast"]["forecastday"]
             
-            # Current weather
+            
             response = f"🌤️ **Weather for {location_info['name']}, {location_info['region']}, {location_info['country']}**\n\n"
             response += f"**Current Conditions** ({location_info['localtime']})\n"
             response += f"🌡️ **Temperature:** {current['temp_c']}°C ({current['temp_f']}°F)\n"
@@ -61,12 +61,12 @@ class Weather(commands.Cog):
             response += f"👁️ **Visibility:** {current['vis_km']} km ({current['vis_miles']} miles)\n"
             response += f"🌡️ **UV Index:** {current['uv']}\n"
             
-            # Air quality if available
+            
             if "air_quality" in current:
                 aqi = current["air_quality"]
                 response += f"🌬️ **Air Quality:** CO: {aqi.get('co', 'N/A')}, NO2: {aqi.get('no2', 'N/A')}, O3: {aqi.get('o3', 'N/A')}\n"
             
-            # Today's forecast
+            
             if forecast:
                 today = forecast[0]["day"]
                 response += f"\n**Today's Forecast**\n"
@@ -75,14 +75,14 @@ class Weather(commands.Cog):
                 response += f"🌧️ **Chance of rain:** {today['daily_chance_of_rain']}%\n"
                 response += f"❄️ **Chance of snow:** {today['daily_chance_of_snow']}%\n"
                 
-                # Sunrise/sunset
+                
                 astro = forecast[0]["astro"]
                 response += f"🌅 **Sunrise:** {astro['sunrise']} | 🌇 **Sunset:** {astro['sunset']}\n"
             
-            # Weather alerts
+            
             if "alerts" in data and data["alerts"]["alert"]:
                 response += f"\n⚠️ **Weather Alerts:**\n"
-                for alert in data["alerts"]["alert"][:2]:  # Limit to 2 alerts
+                for alert in data["alerts"]["alert"][:2]:  
                     response += f"• {alert['headline']}\n"
             
             return response
@@ -139,7 +139,7 @@ class Weather(commands.Cog):
         """Get weather forecast for a location"""
         await interaction.response.defer()
         
-        # Validate days parameter
+        
         if days < 1 or days > 10:
             await interaction.followup.send("❌ Days must be between 1 and 10.")
             return

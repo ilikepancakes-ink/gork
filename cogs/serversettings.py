@@ -225,7 +225,7 @@ class ServerSettings(commands.Cog):
             inline=True
         )
 
-        # Channel-specific settings
+        
         if interaction.channel and isinstance(interaction.channel, discord.TextChannel):
             channel_id = str(interaction.channel.id)
             channel_settings = await self.db.get_channel_settings(channel_id, guild_id)
@@ -265,5 +265,5 @@ class ServerSettings(commands.Cog):
 
 async def setup(bot: commands.Bot):
     cog = ServerSettings(bot)
-    await cog.db.initialize() # Explicitly initialize the database when the cog is loaded
+    await cog.db.initialize() 
     await bot.add_cog(cog)

@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 """
 Debug script to check cog loading status and fix issues
 """
@@ -13,7 +13,7 @@ async def main():
     print("🔍 Discord Bot Cog Debug Tool")
     print("=" * 50)
     
-    # Load environment
+    
     load_dotenv("ai.env")
     discord_token = os.getenv("DISCORD_TOKEN")
     
@@ -21,7 +21,7 @@ async def main():
         print("❌ Missing DISCORD_TOKEN in ai.env")
         return
     
-    # Check cog files
+    
     print("\n📁 Available Cog Files:")
     cogs_dir = "cogs"
     if os.path.exists(cogs_dir):
@@ -32,7 +32,7 @@ async def main():
         print("   ❌ Cogs directory not found")
         return
     
-    # Create bot instance
+    
     intents = discord.Intents.default()
     intents.message_content = True
     bot = commands.Bot(command_prefix="/", intents=intents)
@@ -47,7 +47,7 @@ async def main():
         
         print("\n🔄 Testing Cog Reload...")
         
-        # Test reloading each cog
+        
         cog_file_mapping = {
             'MessageLogger': 'message_logger',
             'Gork': 'gork',
@@ -78,7 +78,7 @@ async def main():
             print("   ❌ MessageLogger cog not found")
             
         print("\n🏓 Testing Ping Functionality:")
-        # Check if Gork cog has on_message listener
+        
         gork_cog = bot.get_cog('Gork')
         if gork_cog:
             print("   ✅ Gork cog found")
@@ -91,7 +91,7 @@ async def main():
         
         await bot.close()
     
-    # Load cogs
+    
     print("\n🔄 Loading Cogs...")
     for cog_file in cog_files:
         try:
@@ -100,7 +100,7 @@ async def main():
         except Exception as e:
             print(f"   ❌ Failed to load {cog_file}: {e}")
     
-    # Start bot (will trigger on_ready and then close)
+    
     try:
         await bot.start(discord_token)
     except Exception as e:

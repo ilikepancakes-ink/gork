@@ -6,7 +6,7 @@ from typing import Optional
 class Status(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.authorized_user_id = 1141746562922459136  # Only this user can change bot status
+        self.authorized_user_id = 1141746562922459136  
     
     def is_authorized_user(self, user_id: int) -> bool:
         """Check if the user is authorized to change bot status"""
@@ -37,7 +37,7 @@ class Status(commands.Cog):
     ):
         """Set the bot's custom status"""
         
-        # Check if user is authorized
+        
         if not self.is_authorized_user(interaction.user.id):
             embed = discord.Embed(
                 title="❌ Access Denied",
@@ -47,7 +47,7 @@ class Status(commands.Cog):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
         
-        # Validate inputs
+        
         if len(text) > 128:
             embed = discord.Embed(
                 title="❌ Error",
@@ -58,7 +58,7 @@ class Status(commands.Cog):
             return
         
         try:
-            # Create the appropriate activity based on status type
+            
             activity = None
             
             if status_type == "playing":
@@ -82,10 +82,10 @@ class Status(commands.Cog):
             elif status_type == "competing":
                 activity = discord.Activity(type=discord.ActivityType.competing, name=text)
             
-            # Set the bot's status
+            
             await self.bot.change_presence(activity=activity)
             
-            # Send success message
+            
             embed = discord.Embed(
                 title="✅ Status Updated",
                 description=f"Bot status has been set to: **{status_type.title()}** {text}",
@@ -111,7 +111,7 @@ class Status(commands.Cog):
     async def clear_status(self, interaction: discord.Interaction):
         """Clear the bot's custom status"""
         
-        # Check if user is authorized
+        
         if not self.is_authorized_user(interaction.user.id):
             embed = discord.Embed(
                 title="❌ Access Denied",
@@ -122,7 +122,7 @@ class Status(commands.Cog):
             return
         
         try:
-            # Clear the bot's status
+            
             await self.bot.change_presence(activity=None)
             
             embed = discord.Embed(
@@ -146,7 +146,7 @@ class Status(commands.Cog):
     async def status_info(self, interaction: discord.Interaction):
         """Show information about the bot's current status and who can change it"""
         
-        # Get current activity
+        
         current_activity = self.bot.activity
         activity_info = "None"
         
@@ -166,7 +166,7 @@ class Status(commands.Cog):
         embed.add_field(name="Current Status", value=activity_info, inline=False)
         embed.add_field(name="Authorized User ID", value=str(self.authorized_user_id), inline=False)
         
-        # Show if current user is authorized
+        
         is_authorized = self.is_authorized_user(interaction.user.id)
         auth_status = "✅ Yes" if is_authorized else "❌ No"
         embed.add_field(name="You are authorized", value=auth_status, inline=False)

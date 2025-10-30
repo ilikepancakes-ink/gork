@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 """
 Migration script to add guild_settings table to existing bot database
 """
@@ -27,11 +27,11 @@ def migrate_guild_settings():
     print(f"🔧 Migrating database at {db_path}")
     
     try:
-        # Connect to database
+        
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        # Check if guild_settings table already exists
+        
         if check_table_exists(cursor, 'guild_settings'):
             print("ℹ️  guild_settings table already exists - no migration needed")
             conn.close()
@@ -39,7 +39,7 @@ def migrate_guild_settings():
         
         print("📝 Creating guild_settings table...")
         
-        # Create guild_settings table
+        
         cursor.execute("""
             CREATE TABLE guild_settings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,7 +51,7 @@ def migrate_guild_settings():
             )
         """)
         
-        # Commit changes
+        
         conn.commit()
         conn.close()
         

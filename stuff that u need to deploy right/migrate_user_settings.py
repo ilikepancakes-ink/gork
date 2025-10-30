@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+
 """
 Database migration script to add user_settings table for NSFW mode functionality.
 This script safely adds the new table without affecting existing data.
@@ -38,23 +38,23 @@ def migrate_database(db_path):
     """Perform the database migration"""
     print(f"🔄 Starting migration for database: {db_path}")
     
-    # Check if database exists
+    
     if not check_database_exists(db_path):
         print(f"❌ Database file not found: {db_path}")
         return False
     
-    # Create backup
+    
     backup_path = backup_database(db_path)
     if not backup_path:
         print("❌ Migration aborted - could not create backup")
         return False
     
     try:
-        # Connect to database
+        
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
-        # Check if user_settings table already exists
+        
         if check_table_exists(cursor, 'user_settings'):
             print("ℹ️  user_settings table already exists - no migration needed")
             conn.close()
@@ -62,7 +62,7 @@ def migrate_database(db_path):
         
         print("📝 Creating user_settings table...")
         
-        # Create user_settings table
+        
         cursor.execute("""
             CREATE TABLE user_settings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,19 +76,19 @@ def migrate_database(db_path):
             )
         """)
         
-        # Create index for better performance
+        
         cursor.execute("""
             CREATE INDEX idx_user_settings_user_id ON user_settings (user_id)
         """)
         
-        # Commit changes
+        
         conn.commit()
         
-        # Verify the table was created successfully
+        
         if check_table_exists(cursor, 'user_settings'):
             print("✅ user_settings table created successfully")
             
-            # Check the table structure
+            
             cursor.execute("PRAGMA table_info(user_settings)")
             columns = cursor.fetchall()
             print(f"📋 Table structure verified - {len(columns)} columns created")
@@ -113,10 +113,10 @@ def main():
     print("🚀 NSFW Mode Database Migration")
     print("=" * 40)
     
-    # Default database path
+    
     default_db_path = "data/bot_messages.db"
     
-    # Check if custom path provided
+    
     if len(sys.argv) > 1:
         db_path = sys.argv[1]
     else:
@@ -124,7 +124,7 @@ def main():
     
     print(f"📁 Database path: {db_path}")
     
-    # Perform migration
+    
     success = migrate_database(db_path)
     
     if success:
