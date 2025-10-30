@@ -149,13 +149,13 @@ class Gork(commands.Cog):
 
         # Define robust patterns for tool detection
         tool_patterns = {
-            'EXECUTE_COMMAND': re.compile(r'\*\*EXECUTE_COMMAND:\*\*(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
-            'GET_WEATHER': re.compile(r'\*\*GET_WEATHER:\*\*(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
-            'WEB_SEARCH': re.compile(r'\*\*WEB_SEARCH:\*\*(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
-            'VISIT_WEBSITE': re.compile(r'\*\*VISIT_WEBSITE:\*\*(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
+            'EXECUTE_COMMAND': re.compile(r'\*?\*?EXECUTE_COMMAND:\*?\*?(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
+            'GET_WEATHER': re.compile(r'\*?\*?GET_WEATHER:\*?\*?(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
+            'WEB_SEARCH': re.compile(r'\*?\*?WEB_SEARCH:\*?\*?(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
+            'VISIT_WEBSITE': re.compile(r'\*?\*?VISIT_WEBSITE:\*?\*?(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
             'STEAM_SEARCH': re.compile(r'\*?STEAM_SEARCH:?\*?(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
-            'SPOTIFY_SEARCH': re.compile(r'\*\*SPOTIFY_SEARCH:\*\*(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
-            'STEAM_USER': re.compile(r'\*\*STEAM_USER:\*\*(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
+            'SPOTIFY_SEARCH': re.compile(r'\*?\*?SPOTIFY_SEARCH:\*?\*?(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
+            'STEAM_USER': re.compile(r'\*?\*?STEAM_USER:\*?\*?(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
         }
 
         processed_response = ai_response
