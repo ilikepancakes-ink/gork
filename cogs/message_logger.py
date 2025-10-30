@@ -41,6 +41,8 @@ class MessageLogger(commands.Cog):
     async def log_user_message(self, message: discord.Message) -> bool:
         """Log a user message to the database"""
         try:
+            # Import here to avoid circular imports
+            from cogs.gork import Gork
             # Extract attachment information if present
             attachment_info = None
             has_attachments = len(message.attachments) > 0
@@ -77,7 +79,26 @@ class MessageLogger(commands.Cog):
                 attachment_info=attachment_info,
                 timestamp=message.created_at
             )
-            
+
+            # Check if we should generate/update user summary
+            if success:
+                try:
+                    # Get current message count for user
+                    message_count = await self.db.get_message_count_for_user(str(message.author.id))
+
+                    # Trigger summary generation every 10 messages (after message 10, 20, 30, etc.)
+                    if message_count > 0 and message_count % 10 == 0:
+                        # Import here to avoid circular imports
+                        gork_cog = self.bot.get_cog('Gork')
+                        if gork_cog:
+                            # Run summary generation in background to not block message logging
+                            asyncio.create_task(gork_cog.generate_user_summary(str(message.author.id)))
+                            print(f"📝 Triggering user summary generation for {message.author.name} (message count: {message_count})")
+                        else:
+                            print("❌ Gork cog not found for summary generation")
+                except Exception as e:
+                    print(f"❌ Error checking for user summary generation: {e}")
+
             return success
             
         except Exception as e:

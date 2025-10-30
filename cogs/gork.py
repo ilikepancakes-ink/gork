@@ -605,7 +605,7 @@ class Gork(commands.Cog):
                             if len(snippet) > 150:
                                 snippet = snippet[:150] + "..."
 
-                            results.append(f"**{i}. {title}**\n{snippet}\n🔗 {link}")
+                            results.append(f"**{i}. {title}**\n{snippet}")
 
                         # Get search information
                         search_info = data.get('search_information', {})
@@ -621,6 +621,8 @@ class Gork(commands.Cog):
                     else:
                         error_text = await response.text()
                         return f"❌ SearchAPI.io error (status {response.status}): {error_text}"
+
+
 
         except Exception as e:
             return f"❌ Error performing web search: {str(e)}"
@@ -1088,6 +1090,70 @@ Recent messages (most recent last):"""
             print(f"Error generating random message: {e}")
             return None
 
+    async def generate_user_summary(self, user_id: str) -> None:
+        """Generate and store a user profile summary based on their message history"""
+        try:
+            # Get message logger for database access
+            message_logger = self.get_message_logger()
+            if not message_logger or not message_logger.db:
+                print(f"❌ Could not generate summary for {user_id}: message logger not available")
+                return
+
+            # Get the user's recent messages for analysis
+            recent_messages = await message_logger.db.get_recent_user_messages_for_summary(user_id, limit=10)
+
+            if len(recent_messages) < 2:
+                print(f"⚠️ Not enough messages for summary generation for user {user_id} (only {len(recent_messages)} messages)")
+                return
+
+            # Get current message count
+            message_count = await message_logger.db.get_message_count_for_user(user_id)
+
+            # Create prompt for AI to summarize user behavior
+            messages_text = "\n".join(f"• {msg}" for msg in recent_messages)
+
+            summary_prompt = f"""Analyze the following messages from a Discord user and create a concise personality/behavior summary. Focus on:
+
+1. Communication style (formal/informal, verbose/concise, friendly/conversational)
+2. Interests and topics they discuss
+3. Languages used (English, slang, technical terms, etc.)
+4. Personality traits (humorous, helpful, curious, etc.)
+5. How they interact with others
+
+Keep the summary brief (2-3 sentences max) and objective.
+
+Recent messages (most recent last):
+{messages_text}
+
+Summary:"""
+
+            summary_messages = [
+                {"role": "system", "content": "You are an expert at analyzing communication patterns and creating brief, accurate personality summaries. Be concise and factual."},
+                {"role": "user", "content": summary_prompt}
+            ]
+
+            # Generate summary using AI
+            summary_text = await self.call_ai(summary_messages, max_tokens=200)
+
+            if summary_text and len(summary_text.strip()) > 10:
+                # Clean up the response
+                summary_text = summary_text.strip()
+                # Remove quotes if wrapped
+                if summary_text.startswith('"') and summary_text.endswith('"'):
+                    summary_text = summary_text[1:-1]
+
+                # Store the summary
+                success = await message_logger.db.update_user_summary(user_id, summary_text, message_count)
+                if success:
+                    print(f"✅ Generated and stored user summary for {user_id} (messages: {message_count})")
+                else:
+                    print(f"❌ Failed to store user summary for {user_id}")
+            else:
+                print(f"❌ Failed to generate meaningful summary for user {user_id}")
+
+        except Exception as e:
+            print(f"❌ Error generating user summary for {user_id}: {e}")
+
     async def visit_website(self, url: str) -> str:
         """Visit a website and extract its content"""
         try:
@@ -1442,6 +1508,18 @@ Recent messages (most recent last):"""
                     except Exception as e:
                         print(f"Error applying content filter: {e}")
                         # Continue with default strict filtering
+
+                # Add user profile summary if available
+                try:
+                    message_logger = self.get_message_logger()
+                    if message_logger and message_logger.db:
+                        user_summary = await message_logger.db.get_user_summary(str(message.author.id))
+                        if user_summary and user_summary['summary_text']:
+                            system_content += f"\n\nUser Profile Summary: {user_summary['summary_text']} (Last updated: {user_summary['last_updated']})"
+                            print(f"Added user summary to context for {message.author.name}")
+                except Exception as e:
+                    print(f"Error retrieving user summary: {e}")
+                    # Continue without summary
 
                 messages = [
                     {
@@ -1932,6 +2010,17 @@ Recent messages (most recent last):"""
             system_content += f"\n\nYou have access to the **STEAM_USER** tool to retrieve information about Steam users. Use this tool when users ask about their Steam ID, profile summary, owned games, or to resolve a Steam vanity URL.\n\n**Tool: STEAM_USER**\n  - **get_steam_id(discord_user_id: str)**: Retrieves the linked Steam ID for a given Discord user ID.\n    - Example: **STEAM_USER: get_steam_id(discord_user_id='1234567890')**\n  - **get_steam_profile_summary(discord_user_id: str)**: Fetches the Steam profile summary for a given Discord user ID. Requires a linked Steam ID.\n    - Example: **STEAM_USER: get_steam_profile_summary(discord_user_id='1234567890')**\n  - **get_user_owned_games(discord_user_id: str)**: Fetches the list of games owned by the Steam user linked to the given Discord user ID. Requires a linked Steam ID.\n    - Example: **STEAM_USER: get_user_owned_games(discord_user_id='1234567890')**\n  - **resolve_steam_vanity_url(vanity_url: str)**: Resolves a Steam custom URL (vanity URL) to a 64-bit Steam ID.\n    - Example: **STEAM_USER: resolve_steam_vanity_url(vanity_url='gabelogannewell')**\n\nIMPORTANT: When using STEAM_USER, you CAN add info or summarize something about it but DO NOT repeat anything copyrighted. Just respond with the STEAM_USER command only. The results will be automatically formatted and displayed. REMEMBER ONLY RESPOND ONCE TO REQUESTS NO EXCEPTIONS."
 
         system_content += "\n\nKeep responses under 2000 characters to fit Discord's message limit."
+
+        # Add user profile summary if available
+        try:
+            if message_logger and message_logger.db:
+                user_summary = await message_logger.db.get_user_summary(str(interaction.user.id))
+                if user_summary and user_summary['summary_text']:
+                    system_content += f"\n\nUser Profile Summary: {user_summary['summary_text']} (Last updated: {user_summary['last_updated']})"
+                    print(f"Added user summary to slash command context for {interaction.user.name}")
+        except Exception as e:
+            print(f"Error retrieving user summary in slash command: {e}")
+            # Continue without summary
 
         messages = [
             {
