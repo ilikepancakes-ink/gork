@@ -211,7 +211,7 @@ class Gork(commands.Cog):
                     elif tool_name == 'STEAM_SEARCH':
                         embed = await self.search_steam_game(arg_text)
                         if context == "channel":
-                            await channel_or_interaction.send(embed=embed)
+                            await channel_or_interaction.reply(embed=embed)
                         else:  # interaction
                             await channel_or_interaction.followup.send(embed=embed)
                         # Remove the tool call from response
@@ -220,7 +220,7 @@ class Gork(commands.Cog):
                     elif tool_name == 'SPOTIFY_SEARCH':
                         embed = await self.search_spotify_song(arg_text)
                         if context == "channel":
-                            await channel_or_interaction.send(embed=embed)
+                            await channel_or_interaction.reply(embed=embed)
                         else:  # interaction
                             await channel_or_interaction.followup.send(embed=embed)
                         # Remove the tool call from response
@@ -1793,7 +1793,7 @@ Summary:"""
                                             break
 
                     # Extract and execute tools using robust parsing
-                    ai_response = await self.extract_and_execute_tools(ai_response, message.channel, "channel")
+                    ai_response = await self.extract_and_execute_tools(ai_response, message, "channel")
 
                     # Calculate processing time
                     processing_time_ms = int((time.time() - processing_start_time) * 1000)
