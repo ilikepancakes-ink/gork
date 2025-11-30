@@ -144,11 +144,10 @@ class Gork(commands.Cog):
             self.whisper_model = None
 
 
-    async def extract_and_execute_tools(self, ai_response: str, channel_or_interaction, context: str) -> tuple[str, bool]:
+    async def extract_and_execute_tools(self, ai_response: str, channel_or_interaction, context: str) -> tuple[dict, str, bool]:
         """Extract and execute tool calls from AI response using robust regex patterns"""
         import re
 
-        
         self.tool_patterns = {
             'EXECUTE_COMMAND': re.compile(r'\*?\*?EXECUTE_COMMAND:\*?\*?(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
             'GET_WEATHER': re.compile(r'\*?\*?GET_WEATHER:\*?\*?(.+?)(?:\n|$)', re.MULTILINE | re.IGNORECASE),
@@ -160,8 +159,8 @@ class Gork(commands.Cog):
         }
 
         processed_response = ai_response
+        tool_outputs = {}
 
-        
         tool_order = ['STEAM_USER', 'SPOTIFY_SEARCH', 'STEAM_SEARCH', 'WEB_SEARCH', 'VISIT_WEBSITE', 'GET_WEATHER', 'EXECUTE_COMMAND']
 
         for tool_name in tool_order:
@@ -174,45 +173,51 @@ class Gork(commands.Cog):
                 print(f"DEBUG: Detected tool call - {tool_name}: '{arg_text}'")
 
                 try:
-                    
+
                     if tool_name == 'EXECUTE_COMMAND':
                         result = await self.execute_safe_command(arg_text)
-                        processed_response = processed_response.replace(tool_call_text, result, 1)
+                        tool_outputs[tool_name] = result
+                        processed_response = processed_response.replace(tool_call_text, "", 1)
 
                     elif tool_name == 'GET_WEATHER':
                         result = await self.get_weather(arg_text)
-                        processed_response = processed_response.replace(tool_call_text, result, 1)
+                        tool_outputs[tool_name] = result
+                        processed_response = processed_response.replace(tool_call_text, "", 1)
 
                     elif tool_name == 'WEB_SEARCH':
                         result = await self.web_search(arg_text)
-                        processed_response = processed_response.replace(tool_call_text, result, 1)
+                        tool_outputs[tool_name] = result
+                        processed_response = processed_response.replace(tool_call_text, "", 1)
 
                     elif tool_name == 'VISIT_WEBSITE':
                         result = await self.visit_website(arg_text)
-                        processed_response = processed_response.replace(tool_call_text, result, 1)
+                        tool_outputs[tool_name] = result
+                        processed_response = processed_response.replace(tool_call_text, "", 1)
 
                     elif tool_name == 'STEAM_SEARCH':
                         embed = await self.search_steam_game(arg_text)
                         if context == "channel":
                             await channel_or_interaction.reply(embed=embed)
-                        else:  
+                        else:
                             await channel_or_interaction.followup.send(embed=embed)
-                        
-                        processed_response = processed_response.replace(tool_call_text, "", 1).strip()
+
+                        tool_outputs[tool_name] = f"Steam game search embed sent for '{arg_text}'"
+                        processed_response = processed_response.replace(tool_call_text, "", 1)
 
                     elif tool_name == 'SPOTIFY_SEARCH':
                         embed = await self.search_spotify_song(arg_text)
                         if context == "channel":
                             await channel_or_interaction.reply(embed=embed)
-                        else:  
+                        else:
                             await channel_or_interaction.followup.send(embed=embed)
-                        
-                        processed_response = processed_response.replace(tool_call_text, "", 1).strip()
+
+                        tool_outputs[tool_name] = f"Spotify song search embed sent for '{arg_text}'"
+                        processed_response = processed_response.replace(tool_call_text, "", 1)
 
                     elif tool_name == 'STEAM_USER':
                         steam_user_cog = self.bot.get_cog('SteamUserTool')
                         if steam_user_cog:
-                            
+
                             try:
                                 match = re.match(r"(\w+)\((.*)\)", arg_text.strip())
                                 if match:
@@ -253,18 +258,18 @@ class Gork(commands.Cog):
                         else:
                             formatted_output = "❌ Steam User Tool cog is not loaded."
 
-                        processed_response = processed_response.replace(tool_call_text, formatted_output, 1)
+                        tool_outputs[tool_name] = formatted_output
+                        processed_response = processed_response.replace(tool_call_text, "", 1)
 
                 except Exception as e:
                     print(f"Error processing tool {tool_name} with arg '{arg_text}': {e}")
-                    
-                    processed_response = processed_response.replace(tool_call_text, f"❌ Error executing {tool_name}: {str(e)}", 1)
+                    error_output = f"❌ Error executing {tool_name}: {str(e)}"
+                    tool_outputs[tool_name] = error_output
+                    processed_response = processed_response.replace(tool_call_text, "", 1)
 
-        
         processed_response = re.sub(r'\n{3,}', '\n\n', processed_response).strip()
-
-        tools_used = processed_response != ai_response  
-        return processed_response, tools_used
+        tools_used = len(tool_outputs) > 0
+        return tool_outputs, processed_response, tools_used
 
     def get_message_logger(self):
         if self.message_logger is None:
@@ -1762,89 +1767,103 @@ Summary:"""
                         "content": user_content
                     })
 
-                
                 async with message.channel.typing():
-                    
+
                     ai_response = await self.call_ai(messages)
                     print(f"DEBUG: AI response received: '{ai_response}' (length: {len(ai_response) if ai_response else 0})")
 
-                    
                     if "steam" in ai_response.lower() or "game" in ai_response.lower():
                         print(f"DEBUG: Game/Steam related response detected, checking for STEAM_SEARCH pattern")
                         print(f"DEBUG: Contains STEAM_SEARCH:: {'STEAM_SEARCH:' in ai_response}")
                         print(f"DEBUG: Full response for analysis: {repr(ai_response)}")
 
-                        
                         if "STEAM_SEARCH:" not in ai_response:
-                            
+
                             user_message_text = user_content.lower()
                             game_keywords = ["tell me about", "what's the price of", "show me", "search for", "information about", "details about"]
 
                             for keyword in game_keywords:
                                 if keyword in user_message_text:
-                                    
+
                                     parts = user_message_text.split(keyword)
                                     if len(parts) > 1:
-                                        potential_game = parts[1].strip().split()[0:3]  
+                                        potential_game = parts[1].strip().split()[0:3]
                                         game_name = " ".join(potential_game).strip("?.,!").title()
                                         if game_name and len(game_name) > 2:
                                             print(f"DEBUG: Fallback detected potential game name: '{game_name}'")
-                                            
+
                                             steam_embed = await self.search_steam_game(game_name)
                                             await message.channel.send(embed=steam_embed)
                                             ai_response = ""
                                             break
 
-                    
-                    ai_response, tools_used = await self.extract_and_execute_tools(ai_response, message, "channel")
+                    tool_outputs, initial_response, tools_used = await self.extract_and_execute_tools(ai_response, message, "channel")
+
+                    if tool_outputs:
+                        # Process tool outputs through AI with original prompt
+                        tool_outputs_text = "\n".join([f"{tool}: {output}" for tool, output in tool_outputs.items()])
+
+                        second_messages = [
+                            {"role": "system", "content": "You are an AI assistant processing tool outputs. Analyze and summarize the tool results in the context of the user's original request."},
+                            {"role": "user", "content": f"Original user message: {user_content}\n\nTool outputs:\n{tool_outputs_text}\n\nPlease summarize what these tool results mean in the context of the user's request."}
+                        ]
+
+                        processed_tool_summary = await self.call_ai(second_messages, max_tokens=1000)
+
+                        # Combine initial response + processed tool summary
+                        third_messages = [
+                            {"role": "system", "content": "You are an AI assistant combining initial analysis with tool results. Create a coherent final response."},
+                            {"role": "user", "content": f"Initial AI response: {initial_response}\n\nProcessed tool summary: {processed_tool_summary}\n\nCombine these into a final, coherent response to the user."}
+                        ]
+
+                        final_response = await self.call_ai(third_messages, max_tokens=1500)
+                    else:
+                        final_response = initial_response
 
                     
                     processing_time_ms = int((time.time() - processing_start_time) * 1000)
 
-                    
-                    if not ai_response or not ai_response.strip():
-                        ai_response = "❌ I received an empty response from the AI. Please try again."
+                    if not final_response or not final_response.strip():
+                        final_response = "❌ I received an empty response from the AI. Please try again."
 
-                    
                     content_filter = self.get_content_filter()
                     if content_filter:
                         try:
                             user_content_settings = await content_filter.get_user_content_settings(str(message.author.id))
                             content_warning = content_filter.get_content_warning_message(user_content_settings)
                             if content_warning:
-                                ai_response = content_warning + ai_response
+                                final_response = content_warning + final_response
                         except Exception as e:
                             print(f"Error adding content warning: {e}")
 
-                    
-                    if ai_response.strip(): 
-                        if len(ai_response) > 2000:
-                            
-                            chunks = [ai_response[i:i+2000] for i in range(0, len(ai_response), 2000)]
+                    if final_response.strip():
+                        if len(final_response) > 2000:
+
+                            chunks = [final_response[i:i+2000] for i in range(0, len(final_response), 2000)]
                             total_chunks = len(chunks)
                             for i, chunk in enumerate(chunks, 1):
                                 sent_message = await message.reply(chunk)
-                                
+
                                 await self.track_sent_message(sent_message, chunk)
-                                
+
                                 if message_logger:
                                     asyncio.create_task(message_logger.log_bot_response(
                                         message, sent_message, chunk, processing_time_ms,
                                         self.model, (total_chunks, i)
                                     ))
-                            
+
                             if tools_used:
                                 await self.cleanup_tool_messages(message.channel.id)
                         else:
-                            sent_message = await message.reply(ai_response)
-                            
-                            await self.track_sent_message(sent_message, ai_response)
-                            
+                            sent_message = await message.reply(final_response)
+
+                            await self.track_sent_message(sent_message, final_response)
+
                             if message_logger:
                                 asyncio.create_task(message_logger.log_bot_response(
-                                    message, sent_message, ai_response, processing_time_ms, self.model
+                                    message, sent_message, final_response, processing_time_ms, self.model
                                 ))
-                            
+
                             if tools_used:
                                 await self.cleanup_tool_messages(message.channel.id)
 
@@ -2004,20 +2023,39 @@ Summary:"""
 
         ai_response = await self.call_ai(messages)
 
-        
-        ai_response = await self.extract_and_execute_tools(ai_response, interaction, "interaction")
+        tool_outputs, initial_response, tools_used = await self.extract_and_execute_tools(ai_response, interaction, "interaction")
+
+        if tool_outputs:
+            # Process tool outputs through AI with original prompt
+            tool_outputs_text = "\n".join([f"{tool}: {output}" for tool, output in tool_outputs.items()])
+
+            second_messages = [
+                {"role": "system", "content": "You are an AI assistant processing tool outputs. Analyze and summarize the tool results in the context of the user's original request."},
+                {"role": "user", "content": f"Original user message: {message}\n\nTool outputs:\n{tool_outputs_text}\n\nPlease summarize what these tool results mean in the context of the user's request."}
+            ]
+
+            processed_tool_summary = await self.call_ai(second_messages, max_tokens=1000)
+
+            # Combine initial response + processed tool summary
+            third_messages = [
+                {"role": "system", "content": "You are an AI assistant combining initial analysis with tool results. Create a coherent final response."},
+                {"role": "user", "content": f"Initial AI response: {initial_response}\n\nProcessed tool summary: {processed_tool_summary}\n\nCombine these into a final, coherent response to the user."}
+            ]
+
+            final_response = await self.call_ai(third_messages, max_tokens=1500)
+        else:
+            final_response = initial_response
 
         
         processing_time_ms = int((time.time() - processing_start_time) * 1000)
 
-        
-        if len(ai_response) > 2000:
-            
-            chunks = [ai_response[i:i+2000] for i in range(0, len(ai_response), 2000)]
+        if len(final_response) > 2000:
+
+            chunks = [final_response[i:i+2000] for i in range(0, len(final_response), 2000)]
             total_chunks = len(chunks)
             sent_message = await interaction.followup.send(chunks[0])
             await self.track_sent_message(sent_message, chunks[0])
-            
+
             if message_logger:
                 asyncio.create_task(message_logger.log_bot_response_from_interaction(
                     interaction, sent_message, chunks[0], processing_time_ms,
@@ -2026,19 +2064,19 @@ Summary:"""
             for i, chunk in enumerate(chunks[1:], 2):
                 sent_message = await interaction.followup.send(chunk)
                 await self.track_sent_message(sent_message, chunk)
-                
+
                 if message_logger:
                     asyncio.create_task(message_logger.log_bot_response_from_interaction(
                         interaction, sent_message, chunk, processing_time_ms,
                         self.model, (total_chunks, i)
                     ))
         else:
-            sent_message = await interaction.followup.send(ai_response)
-            await self.track_sent_message(sent_message, ai_response)
-            
+            sent_message = await interaction.followup.send(final_response)
+            await self.track_sent_message(sent_message, final_response)
+
             if message_logger:
                 asyncio.create_task(message_logger.log_bot_response_from_interaction(
-                    interaction, sent_message, ai_response, processing_time_ms, self.model
+                    interaction, sent_message, final_response, processing_time_ms, self.model
                 ))
 
     @app_commands.command(name="gork_status", description="Check Gork AI status")
