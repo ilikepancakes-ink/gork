@@ -2,8 +2,13 @@ import discord
 from discord.ext import commands
 from discord import app_commands
 from typing import Optional
+import sys
+import os
+
+# Add the parent directory to sys.path to allow importing utils
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from utils.database import MessageDatabase
-import discord
 
 class ServerSettings(commands.Cog):
     """Cog for managing server-specific settings including random messages"""

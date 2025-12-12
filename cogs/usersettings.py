@@ -3,6 +3,11 @@ from discord.ext import commands
 from discord import app_commands
 from typing import Optional
 import os
+import sys
+
+# Add the parent directory to sys.path to allow importing utils
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from utils.database import MessageDatabase
 from utils.steam_api import resolve_vanity_url
 

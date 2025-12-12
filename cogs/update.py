@@ -95,12 +95,12 @@ class Update(commands.Cog):
             with open(self.requirements_file, 'r', encoding='utf-8') as f:
                 requirements = f.readlines()
 
-        for req in requirements:
-            req = req.strip()
-            if not req or req.startswith('#'):
-                continue
+            for req in requirements:
+                req = req.strip()
+                if not req or req.startswith('#'):
+                    continue
 
-                
+
                 package_name = req.split('>=')[0].split('==')[0].split('>')[0].split('<')[0].split('!')[0].strip()
 
                 if package_name.lower() not in installed_packages:
