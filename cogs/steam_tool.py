@@ -1,10 +1,15 @@
 import os
+import sys
 import httpx
 import discord
 from discord.ext import commands
 from typing import Optional, List, Dict, Any
+
+# Add the parent directory to sys.path to allow importing utils
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from utils.database import MessageDatabase
-from utils.steam_api import resolve_vanity_url as steam_resolve_vanity_url 
+from utils.steam_api import resolve_vanity_url as steam_resolve_vanity_url
 
 class SteamUserTool(commands.Cog):
     def __init__(self, bot: commands.Bot, db: MessageDatabase):
