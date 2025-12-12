@@ -1458,11 +1458,11 @@ Summary:"""
         
         is_dm = isinstance(message.channel, discord.DMChannel)
         is_mentioned = self.bot.user in message.mentions
+        contains_at_gork = "@gork" in message.content.lower()
 
-        
         message_logger = self.get_message_logger()
         guild_settings = {}
-        channel_settings = {} 
+        channel_settings = {}
         if message.guild and message_logger and message_logger.db:
             guild_settings = await message_logger.db.get_guild_settings(str(message.guild.id))
             channel_settings = await message_logger.db.get_channel_settings(str(message.channel.id), str(message.guild.id))
@@ -1522,7 +1522,7 @@ Summary:"""
             await self.check_and_delete_duplicate(message, message.content)
             return
 
-        if is_mentioned or is_dm:
+        if is_mentioned or is_dm or contains_at_gork:
             
             youtube_match = self.youtube_url_pattern.search(message.content)
             if youtube_match and ("summarize" in message.content.lower() or "summary" in message.content.lower()):
@@ -1722,7 +1722,9 @@ Summary:"""
                 
                 user_content = message.content.replace(f'<@{self.bot.user.id}>', '').strip()
 
-                
+                if contains_at_gork:
+                    user_content = user_content.replace('@gork', '').strip()
+
                 if is_dm and not user_content:
                     user_content = message.content.strip()
 
@@ -2086,7 +2088,7 @@ Summary:"""
         """Check if Gork AI is properly configured"""
         
         is_dm = interaction.guild is None
-        usage_text = "Send me a message in DM (with optional files/images) or mention me in a server, or use `/gork` command" if is_dm else "Mention me in a message (with optional files/images) or use `/gork` command"
+        usage_text = "Send me a message in DM (with optional files/images), mention me in a server, reply to messages with '@gork', or use `/gork` command" if is_dm else "Mention me in a message (with optional files/images), reply to messages with '@gork', or use `/gork` command"
 
         if self.openrouter_api_key:
             embed = discord.Embed(
